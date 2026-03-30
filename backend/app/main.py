@@ -1,10 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from app.db.database import engine, Base
-from app.models import *  # registra todos los modelos antes del create_all
+from app.models import *
+from app.api.routes import auth
+from app.api.errors import http_exception_handler
 
-# create_all crea las tablas en PostgreSQL si no existen.
-# Equivale a que Spring/Hibernate genere el DDL automáticamente.
-# No modifica tablas que ya existen — es seguro ejecutarlo cada arranque.
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -12,6 +11,13 @@ app = FastAPI(
     version="0.1.0",
     description="Plataforma SaaS de analítica para e-commerce"
 )
+
+# Manejador global de errores
+app.add_exception_handler(HTTPException, http_exception_handler)
+
+# Registrar routers
+app.include_router(auth.router)
+
 
 @app.get("/health")
 def health_check():
