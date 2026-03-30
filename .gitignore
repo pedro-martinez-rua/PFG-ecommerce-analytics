@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+*.egg-info/
+
+# Entorno
+.env
+*.env.local
+
+# Node
+node_modules/
+dist/
+
+# DB
+*.sqlite
+
+# IDEs
+.vscode/
+.idea/
+*.DS_Store
