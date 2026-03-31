@@ -1,5 +1,7 @@
 from app.models.tenant import Tenant
 from app.models.user import User
+from app.models.import_record import Import
+from app.models.import_sheet import ImportSheet
 from app.models.customer import Customer
 from app.models.product import Product
 from app.models.order import Order
