@@ -1,8 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from app.db.database import engine, Base
 from app.models import *
-from app.api.routes import auth, uploads
 from app.api.errors import http_exception_handler
+from app.api.routes import auth, imports
 
 Base.metadata.create_all(bind=engine)
 
@@ -15,7 +15,7 @@ app = FastAPI(
 app.add_exception_handler(HTTPException, http_exception_handler)
 
 app.include_router(auth.router)
-app.include_router(uploads.router)
+app.include_router(imports.router)         
 
 
 @app.get("/health")
