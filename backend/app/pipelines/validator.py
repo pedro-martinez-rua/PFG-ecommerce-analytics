@@ -1,7 +1,20 @@
-import pandera.pandas as pa
+"""
+validator.py — Quinta capa del pipeline.
+
+Responsabilidad: validar el DataFrame mapeado antes de transformar y cargar.
+Usa Pandera para validación declarativa de schemas.
+
+Clasifica cada fila como:
+- VALID:      pasa todas las validaciones
+- INVALID:    falla en campo obligatorio → no se carga
+- REPAIRABLE: falla en campo opcional → se carga parcialmente
+- SKIPPED:    fila vacía → se omite sin error
+"""
+import pandera as pa
 from pandera import Column, DataFrameSchema, Check, errors as pa_errors
 import pandas as pd
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date, datetime
 from enum import Enum
 
 
@@ -16,85 +29,71 @@ class RowStatus(str, Enum):
 class RowValidationResult:
     row_index: int
     status: RowStatus
-    errors: list[dict]   # [{field, error_type, value, message}]
-    warnings: list[dict] # campos opcionales con valores sospechosos
+    errors: list = field(default_factory=list)
+    warnings: list = field(default_factory=list)
 
 
 # ─────────────────────────────────────────────
-# SCHEMAS PANDERA POR TIPO DE ENTIDAD
-# Cada campo canónico tiene su tipo y sus checks.
-# nullable=True significa que la columna puede no existir en el CSV
-# o tener valores nulos — no bloquea la fila.
+# SCHEMAS PANDERA
+# strict=False → permite columnas extra (van a extra_attributes)
+# coerce=False → NO convertir tipos — lo hace el transformer
 # ─────────────────────────────────────────────
 
 ORDERS_SCHEMA = DataFrameSchema(
     columns={
-        # OBLIGATORIOS — su ausencia invalida la fila
         "order_date": Column(
-            pa.String,
-            nullable=False,
-            required=True,
-            description="Fecha del pedido — campo obligatorio"
+            pa.String, nullable=False, required=True,
+            description="Fecha del pedido — obligatorio"
         ),
-
-        # IMPORTANTES — su ausencia genera warning pero no invalida
         "total_amount": Column(
-            pa.String,
-            nullable=True,
-            required=False,
-            checks=[
-                Check(
-                    lambda s: s.isna() | s.str.replace(",", ".", regex=False)
-                               .str.replace(r"[€$£\s]", "", regex=True)
-                               .str.match(r"^-?[\d\.]+$"),
-                    element_wise=True,
-                    error="total_amount must be a valid number"
-                )
-            ],
-            description="Importe total del pedido"
+            pa.String, nullable=True, required=False,
+            checks=[Check(
+                lambda s: s.isna() | s.str.replace(",", ".", regex=False)
+                           .str.replace(r"[€$£\s]", "", regex=True)
+                           .str.match(r"^-?[\d\.eE+]+$"),
+                element_wise=True,
+                error="total_amount debe ser un número válido"
+            )]
         ),
-
-        # OPCIONALES — se procesan si existen, se ignoran si no
-        "discount_amount": Column(pa.String, nullable=True, required=False),
-        "shipping_cost":   Column(pa.String, nullable=True, required=False),
-        "cogs_amount":     Column(pa.String, nullable=True, required=False),
-        "currency":        Column(pa.String, nullable=True, required=False),
-        "channel":         Column(pa.String, nullable=True, required=False),
-        "status":          Column(pa.String, nullable=True, required=False),
-        "payment_method":  Column(pa.String, nullable=True, required=False),
-        "shipping_country":Column(pa.String, nullable=True, required=False),
-        "shipping_region": Column(pa.String, nullable=True, required=False),
-        "delivery_days":   Column(pa.String, nullable=True, required=False),
-        "is_returned":     Column(pa.String, nullable=True, required=False),
-        "product_name":    Column(pa.String, nullable=True, required=False),
-        "quantity":        Column(pa.String, nullable=True, required=False),
-        "unit_price":      Column(pa.String, nullable=True, required=False),
-        "category":        Column(pa.String, nullable=True, required=False),
-        "brand":           Column(pa.String, nullable=True, required=False),
+        "discount_amount":  Column(pa.String, nullable=True, required=False),
+        "shipping_cost":    Column(pa.String, nullable=True, required=False),
+        "cogs_amount":      Column(pa.String, nullable=True, required=False),
+        "currency":         Column(pa.String, nullable=True, required=False),
+        "channel":          Column(pa.String, nullable=True, required=False),
+        "status":           Column(pa.String, nullable=True, required=False),
+        "payment_method":   Column(pa.String, nullable=True, required=False),
+        "shipping_country": Column(pa.String, nullable=True, required=False),
+        "shipping_region":  Column(pa.String, nullable=True, required=False),
+        "delivery_days":    Column(pa.String, nullable=True, required=False),
+        "is_returned":      Column(pa.String, nullable=True, required=False),
+        "product_name":     Column(pa.String, nullable=True, required=False),
+        "quantity":         Column(pa.String, nullable=True, required=False),
+        "unit_price":       Column(pa.String, nullable=True, required=False),
+        "category":         Column(pa.String, nullable=True, required=False),
+        "brand":            Column(pa.String, nullable=True, required=False),
     },
-    strict=False,      # permite columnas extra — van a extra_attributes
-    coerce=False,      # NO convertir tipos automáticamente — lo hace el transformer
+    strict=False,
+    coerce=False,
 )
 
 CUSTOMERS_SCHEMA = DataFrameSchema(
     columns={
         "customer_external_id": Column(pa.String, nullable=True, required=False),
         "customer_email": Column(
-            pa.String,
-            nullable=True,
-            required=False,
-            checks=[
-                Check(
-                    lambda s: s.isna() | s.str.match(r"^[\w\.\+\-]+@[\w\-]+\.[a-z]{2,}$"),
-                    element_wise=True,
-                    error="customer_email must be a valid email address"
-                )
-            ]
+            pa.String, nullable=True, required=False,
+            checks=[Check(
+                # Email estricto: requiere dominio con TLD de al menos 2 chars
+                lambda s: s.isna() | s.str.match(
+                    r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
+                ),
+                element_wise=True,
+                error="customer_email debe ser un email válido"
+            )]
         ),
-        "customer_name":    Column(pa.String, nullable=True, required=False),
-        "country":          Column(pa.String, nullable=True, required=False),
-        "region":           Column(pa.String, nullable=True, required=False),
-        "customer_rating":  Column(pa.String, nullable=True, required=False),
+        "customer_name":   Column(pa.String, nullable=True, required=False),
+        "country":         Column(pa.String, nullable=True, required=False),
+        "region":          Column(pa.String, nullable=True, required=False),
+        "customer_rating": Column(pa.String, nullable=True, required=False),
     },
     strict=False,
     coerce=False,
@@ -103,16 +102,14 @@ CUSTOMERS_SCHEMA = DataFrameSchema(
 PRODUCTS_SCHEMA = DataFrameSchema(
     columns={
         "product_name": Column(
-            pa.String,
-            nullable=False,
-            required=True,
-            description="Nombre del producto — campo obligatorio"
+            pa.String, nullable=False, required=True,
+            description="Nombre del producto — obligatorio"
         ),
-        "sku":        Column(pa.String, nullable=True, required=False),
-        "category":   Column(pa.String, nullable=True, required=False),
-        "brand":      Column(pa.String, nullable=True, required=False),
-        "unit_price": Column(pa.String, nullable=True, required=False),
-        "unit_cost":  Column(pa.String, nullable=True, required=False),
+        "sku":          Column(pa.String, nullable=True, required=False),
+        "category":     Column(pa.String, nullable=True, required=False),
+        "brand":        Column(pa.String, nullable=True, required=False),
+        "unit_price":   Column(pa.String, nullable=True, required=False),
+        "unit_cost":    Column(pa.String, nullable=True, required=False),
     },
     strict=False,
     coerce=False,
@@ -124,12 +121,13 @@ SCHEMA_MAP = {
     "products":  PRODUCTS_SCHEMA,
 }
 
-# Campos mínimos requeridos por tipo para que la fila sea procesable
 MINIMUM_REQUIRED_FIELDS = {
     "orders":    ["order_date"],
-    "customers": [],            # al menos uno de los dos se comprueba en lógica
+    "customers": [],
     "products":  ["product_name"],
 }
+
+TODAY = datetime.now().date()
 
 
 def validate_dataframe(
@@ -137,40 +135,35 @@ def validate_dataframe(
     upload_type: str
 ) -> tuple[list[RowValidationResult], pd.DataFrame]:
     """
-    Valida un DataFrame completo usando Pandera.
-
-    Devuelve:
-    - list[RowValidationResult]: resultado por fila con errores detallados
-    - pd.DataFrame: solo las filas válidas o reparables (para continuar el pipeline)
-
-    Proceso:
-    1. Renombrar columnas al schema canónico (ya mapeadas por mapper.py)
-    2. Eliminar filas completamente vacías → SKIPPED
-    3. Validar con Pandera el DataFrame completo
-    4. Clasificar cada fila: VALID / INVALID / REPAIRABLE
-    5. Devolver resultados + DataFrame limpio
+    Valida un DataFrame completo con Pandera en modo lazy.
+    Devuelve (resultados por fila, DataFrame con filas procesables).
     """
+    # DataFrame vacío — return inmediato
+    if df is None or df.empty:
+        return [], df if df is not None else pd.DataFrame()
+
     results: list[RowValidationResult] = []
-    schema = SCHEMA_MAP.get(upload_type, ORDERS_SCHEMA)
+    schema         = SCHEMA_MAP.get(upload_type, ORDERS_SCHEMA)
     minimum_fields = MINIMUM_REQUIRED_FIELDS.get(upload_type, [])
 
-    # Paso 1 — Eliminar filas completamente vacías
-    empty_mask = df.isnull().all(axis=1) | (df == "").all(axis=1)
+    # Eliminar filas completamente vacías → SKIPPED
+    empty_mask = df.isnull().all(axis=1) | (df.astype(str).replace("None", None).isnull().all(axis=1))
     for idx in df[empty_mask].index:
         results.append(RowValidationResult(
             row_index=int(idx),
             status=RowStatus.SKIPPED,
-            errors=[],
             warnings=[{"message": "Fila completamente vacía — omitida"}]
         ))
     df = df[~empty_mask].copy()
 
-    # Paso 2 — Validar con Pandera (lazy=True recoge TODOS los errores, no para en el primero)
+    if df.empty:
+        return results, df
+
+    # Validación Pandera en modo lazy — recoge TODOS los errores antes de reportar
     pandera_errors: dict[int, list[dict]] = {}
     try:
         schema.validate(df, lazy=True)
     except pa_errors.SchemaErrors as exc:
-        # exc.failure_cases es un DataFrame con todos los errores encontrados
         for _, row in exc.failure_cases.iterrows():
             row_idx = int(row.get("index", -1)) if row.get("index") is not None else -1
             if row_idx not in pandera_errors:
@@ -179,21 +172,21 @@ def validate_dataframe(
                 "field":      row.get("column", "unknown"),
                 "error_type": row.get("check", "validation_error"),
                 "value":      str(row.get("failure_case", "")),
-                "message":    f"Validation failed: {row.get('check', '')} on column '{row.get('column', '')}'"
+                "message":    f"Validación fallida en '{row.get('column', '')}': {row.get('check', '')}"
             })
 
-    # Paso 3 — Clasificar cada fila
+    # Clasificar cada fila
     valid_indices = []
     for idx, row in df.iterrows():
         row_errors = pandera_errors.get(int(idx), [])
-        warnings = []
+        warnings   = []
 
-        # Verificar campos mínimos obligatorios
+        # Verificar campos obligatorios mínimos
         missing_required = []
-        for field in minimum_fields:
-            val = row.get(field)
-            if val is None or str(val).strip() in ("", "nan", "None", "NaT"):
-                missing_required.append(field)
+        for f in minimum_fields:
+            val = row.get(f)
+            if val is None or str(val).strip() in ("", "nan", "None", "NaT", "none"):
+                missing_required.append(f)
 
         if missing_required:
             row_errors.append({
@@ -203,10 +196,12 @@ def validate_dataframe(
                 "message":    f"Campo obligatorio ausente: {', '.join(missing_required)}"
             })
 
-        # Lógica especial para customers: necesita al menos email o external_id
+        # Validación especial para customers: necesita al menos email o external_id
         if upload_type == "customers":
-            has_email = bool(row.get("customer_email")) and str(row.get("customer_email")).strip() not in ("", "nan")
-            has_id    = bool(row.get("customer_external_id")) and str(row.get("customer_external_id")).strip() not in ("", "nan")
+            has_email = bool(row.get("customer_email")) and \
+                        str(row.get("customer_email", "")).strip() not in ("", "nan", "None")
+            has_id    = bool(row.get("customer_external_id")) and \
+                        str(row.get("customer_external_id", "")).strip() not in ("", "nan", "None")
             if not has_email and not has_id:
                 row_errors.append({
                     "field":      "customer_email / customer_external_id",
@@ -215,23 +210,76 @@ def validate_dataframe(
                     "message":    "Se necesita al menos email o ID de cliente"
                 })
 
-        # Warnings — campos importantes pero no obligatorios que están vacíos
-        if upload_type == "orders":
-            if not row.get("total_amount") or str(row.get("total_amount")).strip() in ("", "nan"):
+        # Validaciones de negocio para orders
+        if upload_type in ("orders", "mixed"):
+            qty_val = row.get("quantity")
+            if qty_val is not None and str(qty_val).strip() not in ("", "nan", "None"):
+                try:
+                    qty = float(str(qty_val).replace(",", "."))
+                    if qty < 0:
+                        warnings.append({
+                            "field":   "quantity",
+                            "message": f"Cantidad negativa ({qty}) — puede indicar una devolución"
+                        })
+                except (ValueError, TypeError):
+                    pass
+
+            # Fechas futuras — más de 1 día en el futuro es sospechoso
+            date_val = row.get("order_date")
+            if date_val is not None and str(date_val).strip() not in ("", "nan", "None"):
+                try:
+                    from app.pipelines.transformer import parse_date
+                    parsed_date = parse_date(str(date_val))
+                    if parsed_date and parsed_date > TODAY:
+                        from datetime import timedelta
+                        if parsed_date > TODAY:
+                            row_errors.append({
+                                "field":      "order_date",
+                                "error_type": "future_date",
+                                "value":      str(date_val),
+                                "message":    f"Fecha futura no permitida: {parsed_date}"
+                            })
+                except Exception:
+                    pass
+
+            # Importes negativos sin indicación de refund
+            amount_val = row.get("total_amount")
+            is_returned = str(row.get("is_returned", "")).lower() in (
+                "yes", "true", "1", "returned", "devuelto", "si", "sí", "refunded"
+            )
+            if amount_val is not None and str(amount_val).strip() not in ("", "nan", "None"):
+                try:
+                    amount = float(
+                        str(amount_val).replace(",", ".")
+                        .replace("€", "").replace("$", "").replace("£", "").strip()
+                    )
+                    if amount < 0 and not is_returned:
+                        warnings.append({
+                            "field":   "total_amount",
+                            "message": f"Importe negativo ({amount}) sin indicación de devolución"
+                        })
+                except (ValueError, TypeError):
+                    pass
+
+        # Warnings para campos importantes pero no obligatorios vacíos
+        if upload_type in ("orders", "mixed"):
+            if not row.get("total_amount") or \
+               str(row.get("total_amount", "")).strip() in ("", "nan", "None"):
                 warnings.append({
                     "field":   "total_amount",
-                    "message": "Importe total ausente — algunos KPIs financieros no estarán disponibles"
+                    "message": "Importe total ausente — KPIs financieros limitados para esta fila"
                 })
 
         # Clasificar la fila
         if not row_errors:
             status = RowStatus.VALID
             valid_indices.append(idx)
-        elif missing_required:
-            # Tiene errores en campos obligatorios → INVALID
+        elif missing_required or any(
+            e.get("error_type") in ("missing_required_field", "future_date")
+            for e in row_errors
+        ):
             status = RowStatus.INVALID
         else:
-            # Tiene errores en campos opcionales → REPAIRABLE (se carga parcialmente)
             status = RowStatus.REPAIRABLE
             valid_indices.append(idx)
 
@@ -242,24 +290,18 @@ def validate_dataframe(
             warnings=warnings
         ))
 
-    # Devolver solo las filas válidas o reparables
     processable_df = df.loc[df.index.isin(valid_indices)].copy()
-
     return results, processable_df
 
 
 def build_validation_summary(results: list[RowValidationResult]) -> dict:
-    """
-    Construye el resumen de validación para devolver al usuario.
-    Este resumen va en el ImportResponse y en la tabla imports.
-    """
-    total     = len(results)
-    valid     = sum(1 for r in results if r.status == RowStatus.VALID)
-    repairable= sum(1 for r in results if r.status == RowStatus.REPAIRABLE)
-    invalid   = sum(1 for r in results if r.status == RowStatus.INVALID)
-    skipped   = sum(1 for r in results if r.status == RowStatus.SKIPPED)
+    """Construye el resumen de validación para devolver al usuario."""
+    total      = len(results)
+    valid      = sum(1 for r in results if r.status == RowStatus.VALID)
+    repairable = sum(1 for r in results if r.status == RowStatus.REPAIRABLE)
+    invalid    = sum(1 for r in results if r.status == RowStatus.INVALID)
+    skipped    = sum(1 for r in results if r.status == RowStatus.SKIPPED)
 
-    # Errores más frecuentes — útil para el usuario
     error_counts: dict[str, int] = {}
     for r in results:
         for e in r.errors:
