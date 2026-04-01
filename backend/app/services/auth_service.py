@@ -1,5 +1,4 @@
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
 from app.repositories.user_repository import (
     get_user_by_email,
     create_tenant_and_user
@@ -12,14 +11,11 @@ from app.models.user import User
 def register_user(db: Session, data: RegisterRequest) -> User:
     """
     Registra una nueva empresa y su usuario.
-    Verifica que el email no esté ya registrado.
+    Lanza ValueError si el email ya existe.
     """
     existing = get_user_by_email(db, data.email)
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Ya existe una cuenta con ese email"
-        )
+        raise ValueError("Ya existe una cuenta con ese email")
 
     hashed = hash_password(data.password)
 
@@ -34,32 +30,24 @@ def register_user(db: Session, data: RegisterRequest) -> User:
     )
 
 
-def login_user(db: Session, data: LoginRequest) -> TokenResponse:
+def login_user(db: Session, data: LoginRequest) -> TokenResponse | None:
     """
     Valida credenciales y devuelve un JWT.
-    El payload incluye user_id (sub) y tenant_id.
+    Devuelve None si las credenciales son incorrectas.
+    NO lanza HTTPException — eso es responsabilidad del router.
     """
     # 1. Buscar usuario
     user = get_user_by_email(db, data.email)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email o contraseña incorrectos"
-        )
+        return None
 
     # 2. Verificar contraseña
     if not verify_password(data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email o contraseña incorrectos"
-        )
+        return None
 
     # 3. Verificar cuenta activa
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cuenta desactivada"
-        )
+        return None
 
     # 4. Generar JWT
     token = create_access_token({

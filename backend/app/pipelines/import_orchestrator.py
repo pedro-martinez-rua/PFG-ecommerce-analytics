@@ -1,18 +1,17 @@
 """
 import_orchestrator.py — Capa de orquestación del pipeline.
 
-Coordina todas las capas en orden:
-file_parser → detector → mapper → validator → transformer → canonical_loader
-
-Gestiona el ciclo de vida completo de un Import:
-- Crea el registro Import en BD al inicio
-- Crea un ImportSheet por cada hoja procesada
-- Bulk inserts para máximo rendimiento
-- Staging solo para filas inválidas
-- Deduplicación en memoria — sin queries por fila
-- Los datos del usuario nunca salen del servidor
+Fixes aplicados:
+- Try/except global en run_import → import nunca queda en "processing"
+- df.loc en lugar de df.iloc → índice correcto tras eliminar filas vacías
+- Sanitización de extra_attributes → campos sensibles no van a BD
+- Deduplicación con hash cuando external_id es None → evita duplicados
+- sheet.warnings propagados al usuario en el response
+- pandas importado al nivel del módulo
 """
 import uuid
+import hashlib
+import pandas as pd
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
@@ -34,7 +33,51 @@ from app.models.order_line import OrderLine
 from app.models.customer import Customer
 from app.models.product import Product
 
+
+# Campos que nunca deben ir a extra_attributes
+SENSITIVE_FIELDS_BLOCKLIST = {
+    "password", "contraseña", "passwd", "pin", "cvv", "cvc",
+    "card_number", "numero_tarjeta", "tarjeta", "tarjeta_credito",
+    "iban", "account_number", "numero_cuenta", "cuenta_bancaria",
+    "nif", "dni", "nie", "passport", "pasaporte", "ssn",
+    "credit_card", "debit_card", "swift", "routing_number",
+    "secret", "token", "api_key", "private_key"
+}
+
+
+def _sanitize_extra(extra: dict) -> dict:
+    """
+    Elimina campos potencialmente sensibles de extra_attributes.
+    Cumplimiento básico de RGPD — datos financieros y de identidad
+    no deben guardarse en campos no estructurados.
+    """
+    return {
+        k: v for k, v in extra.items()
+        if k.lower().replace(" ", "_").replace("-", "_") not in SENSITIVE_FIELDS_BLOCKLIST
+    }
+
+
+def _generate_dedup_key(transformed: dict) -> str | None:
+    """
+    Genera una clave de deduplicación cuando no hay external_id.
+    Basada en hash MD5 de los campos clave del pedido.
+    No es perfecta pero previene duplicados obvios al subir el mismo fichero.
+    """
+    date_val  = str(transformed.get("order_date", ""))
+    total_val = str(transformed.get("total_amount", ""))
+    prod_val  = str(transformed.get("product_name", ""))
+    cust_val  = str(transformed.get("customer_external_id", ""))
+
+    if date_val and date_val not in ("None", ""):
+        raw = f"{date_val}|{total_val}|{prod_val}|{cust_val}"
+        return f"hash_{hashlib.md5(raw.encode()).hexdigest()}"
+    return None
+
+
+# ─────────────────────────────────────────────
 # PUNTO DE ENTRADA PRINCIPAL
+# ─────────────────────────────────────────────
+
 def run_import(
     db: Session,
     tenant_id: str,
@@ -47,7 +90,7 @@ def run_import(
     SEGURIDAD:
     - file_content nunca se escribe en disco — solo memoria
     - tenant_id siempre viene del JWT — nunca del body del request
-    - Ningún dato del usuario se envía a servicios externos en esta capa
+    - Datos sensibles no se envían a servicios externos en esta capa
     """
     file_size   = len(file_content)
     file_format = "xlsx" if filename.lower().endswith((".xlsx", ".xls")) else "csv"
@@ -76,15 +119,24 @@ def run_import(
         return _failed_response(import_id, filename, str(e))
 
     # FASE 2 — Procesar cada hoja
+    # Try/except global: si cualquier hoja falla inesperadamente,
+    # el import se marca como failed en lugar de quedar en "processing"
     total_valid = total_invalid = total_skipped = 0
     sheet_results = []
 
     for sheet in sheets:
-        result = _process_sheet(db, tenant_id, import_id, sheet)
-        sheet_results.append(result)
-        total_valid   += result["valid_rows"]
-        total_invalid += result["invalid_rows"]
-        total_skipped += result["skipped_rows"]
+        try:
+            result = _process_sheet(db, tenant_id, import_id, sheet)
+            sheet_results.append(result)
+            total_valid   += result["valid_rows"]
+            total_invalid += result["invalid_rows"]
+            total_skipped += result["skipped_rows"]
+        except Exception as e:
+            import_record.status        = "failed"
+            import_record.error_message = f"Error procesando '{sheet.sheet_name}': {str(e)[:500]}"
+            import_record.completed_at  = datetime.now(timezone.utc)
+            db.commit()
+            return _failed_response(import_id, filename, import_record.error_message)
 
     # Actualizar Import con totales finales
     total_rows = total_valid + total_invalid + total_skipped
@@ -116,7 +168,11 @@ def run_import(
         "detection_confidence": import_record.detection_confidence,
     }
 
+
+# ─────────────────────────────────────────────
 # PROCESAMIENTO DE UNA HOJA
+# ─────────────────────────────────────────────
+
 def _process_sheet(
     db: Session,
     tenant_id: str,
@@ -169,10 +225,10 @@ def _process_sheet(
             "top_errors":           [],
             "columns_found":        columns_found,
             "diagnosis":            hint,
+            "file_warnings":        sheet.warnings,
             "note": (
                 f"No se reconoció el tipo de datos de esta hoja. "
-                f"Se encontraron {len(sheet.columns)} columnas. "
-                f"{hint}"
+                f"Se encontraron {len(sheet.columns)} columnas. {hint}"
             )
         }
 
@@ -190,7 +246,6 @@ def _process_sheet(
         persist_mapping(db, tenant_id, upload_type.value, mapping_with_confidence, import_id)
 
     # FASE 2c — Aplicar mapping al DataFrame
-    import pandas as pd
     df           = sheet.dataframe.copy()
     rename_map   = {col: mapping[col] for col in df.columns if col in mapping}
     df_canonical = df.rename(columns=rename_map)
@@ -199,7 +254,7 @@ def _process_sheet(
     validation_results, processable_df = validate_dataframe(df_canonical, upload_type.value)
     summary = build_validation_summary(validation_results)
 
-    # Staging SOLO para filas inválidas
+    # Staging SOLO para filas inválidas — usando df.loc (índice correcto)
     invalid_results = [
         r for r in validation_results
         if r.status.value in ("invalid", "error")
@@ -207,9 +262,11 @@ def _process_sheet(
     if invalid_results:
         staging_records = []
         for result in invalid_results:
-            row_dict = df.iloc[result.row_index].where(
-                pd.notna(df.iloc[result.row_index]), None
-            ).to_dict() if result.row_index < len(df) else {}
+            # Fix crítico: usar .loc con la etiqueta, no .iloc con la posición
+            # Tras eliminar filas vacías, el índice no es contiguo
+            row_dict = df.loc[result.row_index].where(
+                pd.notna(df.loc[result.row_index]), None
+            ).to_dict() if result.row_index in df.index else {}
 
             staging_records.append({
                 "id":                str(uuid.uuid4()),
@@ -271,13 +328,18 @@ def _process_sheet(
         "invalid_rows":         summary["invalid_rows"],
         "skipped_rows":         summary["skipped_rows"],
         "top_errors":           summary.get("top_errors", []),
+        "file_warnings":        sheet.warnings,  # propagados al usuario
     }
 
+
+# ─────────────────────────────────────────────
 # HELPERS DE RENDIMIENTO
+# ─────────────────────────────────────────────
+
 def _get_existing_external_ids(db: Session, tenant_id: str, model) -> set:
     """
     Carga todos los external_ids existentes para este tenant en UN solo query.
-    Evita hacer un SELECT por cada fila — clave para el rendimiento con ficheros grandes.
+    Incluye también los hashes de deduplicación (prefijo 'hash_').
     """
     rows = db.query(model.external_id).filter(
         model.tenant_id == tenant_id,
@@ -285,14 +347,10 @@ def _get_existing_external_ids(db: Session, tenant_id: str, model) -> set:
     ).all()
     return {r[0] for r in rows}
 
+
 def _bulk_write_orders(
     db, tenant_id, processable_df, original_df, mapping, existing_ids, batch_size
 ) -> int:
-    """
-    Inserta pedidos y sus líneas en bulk.
-    Deduplicación en memoria usando el set de external_ids precargado.
-    """
-    import pandas as pd
     orders_batch = []
     lines_batch  = []
     loaded       = 0
@@ -301,19 +359,23 @@ def _bulk_write_orders(
         row_dict    = row.where(pd.notna(row), None).to_dict()
         transformed = transform_row(row_dict)
 
+        # Determinar clave de deduplicación
         ext_id = str(transformed["external_id"]) if transformed.get("external_id") else None
+        if not ext_id:
+            ext_id = _generate_dedup_key(transformed)
 
-        # Deduplicación en memoria — sin tocar la BD
+        # Deduplicación en memoria
         if ext_id and ext_id in existing_ids:
             continue
         if ext_id:
             existing_ids.add(ext_id)
 
-        extra = {
+        # Extra attributes — sanitizados
+        extra = _sanitize_extra({
             col: row_dict.get(col)
             for col in original_df.columns
             if col not in mapping and col in original_df.columns
-        }
+        })
 
         order_id = str(uuid.uuid4())
         orders_batch.append({
@@ -340,7 +402,7 @@ def _bulk_write_orders(
             "utm_source":       transformed.get("utm_source"),
             "utm_campaign":     transformed.get("utm_campaign"),
             "session_id":       transformed.get("session_id"),
-            "extra_attributes": extra or {},
+            "extra_attributes": extra,
         })
 
         if transformed.get("product_name") or transformed.get("sku"):
@@ -379,7 +441,6 @@ def _bulk_write_orders(
                 orders_batch = []
                 lines_batch  = []
 
-    # Último batch
     if orders_batch:
         try:
             db.bulk_insert_mappings(Order, orders_batch)
@@ -392,10 +453,10 @@ def _bulk_write_orders(
 
     return loaded
 
+
 def _bulk_write_customers(
     db, tenant_id, processable_df, existing_ids, batch_size
 ) -> int:
-    import pandas as pd
     batch  = []
     loaded = 0
 
@@ -405,6 +466,12 @@ def _bulk_write_customers(
 
         ext_id = str(transformed["customer_external_id"]) \
                  if transformed.get("customer_external_id") else None
+        if not ext_id:
+            # Para customers, usar email como clave alternativa
+            email = transformed.get("customer_email")
+            if email:
+                ext_id = f"email_{email}"
+
         if ext_id and ext_id in existing_ids:
             continue
         if ext_id:
@@ -413,7 +480,8 @@ def _bulk_write_customers(
         batch.append({
             "id":               str(uuid.uuid4()),
             "tenant_id":        tenant_id,
-            "external_id":      ext_id,
+            "external_id":      str(transformed["customer_external_id"])
+                                 if transformed.get("customer_external_id") else None,
             "email":            transformed.get("customer_email"),
             "full_name":        transformed.get("customer_name"),
             "country":          transformed.get("country"),
@@ -421,7 +489,7 @@ def _bulk_write_customers(
             "total_orders":     0,
             "total_spent":      0,
             "avg_order_value":  None,
-            "customer_rating":  None,
+            "customer_rating":  transformed.get("customer_rating"),
             "first_seen_at":    None,
             "last_order_at":    None,
             "extra_attributes": {},
@@ -447,10 +515,10 @@ def _bulk_write_customers(
 
     return loaded
 
+
 def _bulk_write_products(
     db, tenant_id, processable_df, existing_ids, batch_size
 ) -> int:
-    import pandas as pd
     batch  = []
     loaded = 0
 
@@ -460,6 +528,14 @@ def _bulk_write_products(
 
         ext_id = str(transformed["product_external_id"]) \
                  if transformed.get("product_external_id") else None
+        if not ext_id:
+            # Para productos, usar nombre+sku como clave alternativa
+            name = transformed.get("product_name", "")
+            sku  = transformed.get("sku", "")
+            if name:
+                raw = f"{name}|{sku}"
+                ext_id = f"hash_{hashlib.md5(raw.encode()).hexdigest()}"
+
         if ext_id and ext_id in existing_ids:
             continue
         if ext_id:
@@ -468,7 +544,8 @@ def _bulk_write_products(
         batch.append({
             "id":               str(uuid.uuid4()),
             "tenant_id":        tenant_id,
-            "external_id":      ext_id,
+            "external_id":      str(transformed["product_external_id"])
+                                 if transformed.get("product_external_id") else None,
             "name":             transformed.get("product_name", "Sin nombre"),
             "sku":              transformed.get("sku"),
             "category":         transformed.get("category"),
@@ -498,13 +575,13 @@ def _bulk_write_products(
 
     return loaded
 
+
+# ─────────────────────────────────────────────
 # HELPERS AUXILIARES
+# ─────────────────────────────────────────────
+
 def _stage_all_rows(db, tenant_id, import_id, sheet_id, sheet, upload_type):
-    """
-    Guarda todas las filas en staging cuando el tipo es desconocido.
-    Usa bulk insert para eficiencia.
-    """
-    import pandas as pd
+    """Guarda todas las filas en staging cuando el tipo es desconocido."""
     batch = []
     for idx, row in sheet.dataframe.iterrows():
         row_dict = row.where(pd.notna(row), None).to_dict()
@@ -544,11 +621,9 @@ def _stage_all_rows(db, tenant_id, import_id, sheet_id, sheet, upload_type):
         except Exception:
             db.rollback()
 
+
 def _build_unrecognized_hint(columns: list[str]) -> str:
-    """
-    Construye un mensaje de diagnóstico explicando por qué no se reconoció
-    la hoja y qué necesitaría el usuario para que sea procesable.
-    """
+    """Diagnóstico cuando no se reconoce el tipo de hoja."""
     from rapidfuzz import fuzz
 
     ORDER_SIGNALS    = ["order_date", "total_amount", "order_id", "fecha", "importe"]
@@ -578,17 +653,18 @@ def _build_unrecognized_hint(columns: list[str]) -> str:
     if best_type[1] == 0:
         return (
             "Las columnas no coinciden con ningún tipo conocido. "
-            "Para pedidos necesitas columnas como: fecha, importe, id_pedido. "
+            "Para pedidos: fecha, importe, id_pedido. "
             "Para clientes: email, nombre, id_cliente. "
             "Para productos: nombre_producto, sku, categoria."
         )
 
     return (
-        f"El tipo más cercano detectado es '{best_type[0]}' "
+        f"El tipo más cercano es '{best_type[0]}' "
         f"con {best_type[1]} columna(s) reconocida(s), "
-        f"pero se necesitan al menos 2 para procesar automáticamente. "
-        f"Revisa los nombres de columna o renómbralos a nombres estándar."
+        f"pero se necesitan al menos 2. "
+        f"Revisa los nombres de columna."
     )
+
 
 def _failed_response(import_id, filename, error_message):
     return {

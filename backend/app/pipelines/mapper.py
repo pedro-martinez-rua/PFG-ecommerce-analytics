@@ -157,22 +157,25 @@ def persist_mapping(
 ) -> None:
     """
     Guarda el mapping inferido en BD asociado al tenant.
-    Solo guarda los campos resueltos (canonical != None).
-    Si ya existe un mapping para este tenant + upload_type + source_column, lo actualiza.
+    Usa 1 query para cargar los mappings existentes en lugar de
+    1 query por columna — crítico para CSVs con muchas columnas.
     """
+    # 1 query para todos los mappings existentes de este tenant+type
+    existing_mappings = {
+        fm.source_column: fm
+        for fm in db.query(FieldMapping).filter_by(
+            tenant_id=tenant_id,
+            upload_type=upload_type
+        ).all()
+    }
+
     for source_col, info in mapping_with_confidence.items():
         if not info["canonical"]:
-            continue  # no guardar columnas no resueltas
+            continue
 
-        # Buscar si ya existe
-        existing = db.query(FieldMapping).filter_by(
-            tenant_id=tenant_id,
-            upload_type=upload_type,
-            source_column=source_col
-        ).first()
-
-        if existing:
+        if source_col in existing_mappings:
             # Actualizar solo si la nueva confianza es mayor
+            existing = existing_mappings[source_col]
             if info["confidence"] > (existing.confidence or 0):
                 existing.confidence = info["confidence"]
         else:
@@ -182,13 +185,12 @@ def persist_mapping(
                 source_column=source_col,
                 canonical_field=info["canonical"],
                 confidence=info["confidence"],
-                is_confirmed=info["method"] == "exact",  # exactos = auto-confirmados
+                is_confirmed=info["method"] == "exact",
                 import_id=import_id
             )
             db.add(fm)
 
     db.commit()
-
 
 def get_saved_mapping(
     db: Session,

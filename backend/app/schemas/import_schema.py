@@ -11,6 +11,11 @@ class SheetResult(BaseModel):
     skipped_rows: int
     top_errors: List[dict] = []
     note: Optional[str] = None
+    # Campos añadidos para hojas no reconocidas
+    columns_found: Optional[List[str]] = None
+    diagnosis: Optional[str] = None
+    # Warnings del parser (columnas duplicadas, vacías, etc.)
+    file_warnings: Optional[List[str]] = None
 
 
 class ImportResponse(BaseModel):

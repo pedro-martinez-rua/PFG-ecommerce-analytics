@@ -5,12 +5,12 @@ Responsabilidad: leer el fichero (CSV o XLSX) y devolver una lista de ParsedShee
 
 Garantías de seguridad:
 - El fichero NUNCA se escribe en disco — solo se trabaja con bytes en memoria
-- Validación de magic bytes para detectar ficheros maliciosos renombrados
+- Validación de magic bytes real contra ejecutables y binarios renombrados
 - Detección de XLSX con contraseña → mensaje claro
 
 Edge cases manejados:
 - XLSX con celdas combinadas (merged cells)
-- XLSX con fórmulas en lugar de valores
+- XLSX con fórmulas → se leen los valores calculados (openpyxl data_only=True)
 - XLSX con filas/columnas ocultas
 - XLSX con contraseña
 - CSV con BOM UTF-8
@@ -19,10 +19,11 @@ Edge cases manejados:
 - CSV con columnas de nombre numérico
 - CSV con solo cabecera y sin datos
 - Encoding mixto o desconocido
+- Ficheros binarios renombrados como CSV/XLSX
 """
 import io
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import pandas as pd
 
 
@@ -30,11 +31,30 @@ import pandas as pd
 class ParsedSheet:
     sheet_name:    str
     dataframe:     pd.DataFrame
-    source_format: str       # 'csv' o 'xlsx'
+    source_format: str        # 'csv' o 'xlsx'
     row_count:     int
     column_count:  int
     columns:       list[str]
-    warnings:      list[str]  # avisos no bloqueantes (columnas duplicadas, etc.)
+    warnings:      list[str] = field(default_factory=list)
+
+
+# ─────────────────────────────────────────────
+# FIRMAS DE FICHEROS PELIGROSOS
+# Bytes que identifican ficheros binarios que no son CSV/XLSX
+# ─────────────────────────────────────────────
+DANGEROUS_SIGNATURES = [
+    (b"\x4D\x5A",           "ejecutable Windows (EXE/DLL)"),
+    (b"\x7FELF",            "ejecutable Linux (ELF)"),
+    (b"\x89PNG\r\n\x1a\n",  "imagen PNG"),
+    (b"\xFF\xD8\xFF",       "imagen JPEG"),
+    (b"\x25\x50\x44\x46",  "documento PDF"),
+    (b"GIF87a",             "imagen GIF"),
+    (b"GIF89a",             "imagen GIF"),
+    (b"\x00\x00\x01\x00",  "icono ICO"),
+    (b"BM",                 "imagen BMP"),
+    (b"\x1f\x8b",          "archivo GZIP"),
+    (b"Rar!\x1a\x07",      "archivo RAR"),
+]
 
 
 # ─────────────────────────────────────────────
@@ -45,34 +65,44 @@ def _validate_magic_bytes(content: bytes, filename: str) -> None:
     """
     Verifica que el contenido del fichero coincide con su extensión.
     Previene subida de ficheros maliciosos renombrados.
-
-    Magic bytes conocidos:
-    - XLSX/XLS: PK (ZIP format) → 50 4B
-    - CSV: debe ser texto decodificable
     """
     filename_lower = filename.lower()
 
     if filename_lower.endswith((".xlsx", ".xls")):
         # XLSX es un ZIP — empieza con PK (0x50 0x4B)
-        if not content[:2] == b"PK":
+        if content[:2] != b"PK":
             raise ValueError(
                 "El fichero no es un Excel válido. "
-                "Asegúrate de que el fichero tiene formato .xlsx real."
+                "Asegúrate de que el fichero tiene formato .xlsx real "
+                "y no está renombrado desde otro formato."
             )
+
     elif filename_lower.endswith(".csv"):
-        # CSV debe ser texto decodificable
-        # Probar con los encodings más comunes
-        sample = content[:2048]
-        for encoding in ["utf-8", "utf-8-sig", "latin-1", "cp1252"]:
+        # Verificar que no es un binario peligroso renombrado
+        for signature, description in DANGEROUS_SIGNATURES:
+            if content[:len(signature)] == signature:
+                raise ValueError(
+                    f"El fichero no es un CSV válido — "
+                    f"parece ser un {description} renombrado como .csv. "
+                    f"Solo se aceptan ficheros de texto CSV reales."
+                )
+
+        # Verificar que es texto decodificable
+        sample = content[:4096]
+        decoded = False
+        for encoding in ["utf-8", "utf-8-sig", "latin-1"]:
             try:
                 sample.decode(encoding)
-                return  # decodificable — es texto válido
-            except (UnicodeDecodeError, Exception):
+                decoded = True
+                break
+            except UnicodeDecodeError:
                 continue
-        raise ValueError(
-            "El fichero no parece ser un CSV de texto válido. "
-            "Verifica que el fichero no está corrupto o en formato binario."
-        )
+
+        if not decoded:
+            raise ValueError(
+                "El fichero no parece ser texto válido. "
+                "Verifica que el fichero CSV no está corrupto o en formato binario."
+            )
 
 
 # ─────────────────────────────────────────────
@@ -83,64 +113,60 @@ def _clean_columns(df: pd.DataFrame, sheet_name: str) -> tuple[pd.DataFrame, lis
     """
     Limpia los nombres de columna del DataFrame.
 
-    Operaciones:
+    Operaciones (en orden):
     1. Convertir a string y eliminar espacios extremos
     2. Eliminar columnas Unnamed (artefacto de pandas con Excel)
     3. Eliminar columnas completamente vacías
-    4. Normalizar columnas con nombres numéricos
+    4. Normalizar columnas con nombres numéricos o vacíos
     5. Detectar y avisar sobre columnas duplicadas
-
-    Returns: (df_limpio, lista_de_warnings)
     """
-    warnings = []
+    col_warnings = []
 
     # 1. Limpiar nombres de columna
     df.columns = [str(c).strip() for c in df.columns]
 
-    # 2. Eliminar columnas Unnamed (artefacto de Excel/pandas)
+    # 2. Eliminar columnas Unnamed (artefacto de Excel/pandas al exportar)
     unnamed_cols = [c for c in df.columns if re.match(r"^Unnamed:\s*\d+", c)]
     if unnamed_cols:
         df = df.drop(columns=unnamed_cols)
-        warnings.append(
-            f"Se eliminaron {len(unnamed_cols)} columna(s) sin nombre (Unnamed)"
+        col_warnings.append(
+            f"Se eliminaron {len(unnamed_cols)} columna(s) sin nombre (Unnamed) en '{sheet_name}'"
         )
 
     # 3. Eliminar columnas completamente vacías
     before = len(df.columns)
     df = df.dropna(axis=1, how="all")
-    after  = len(df.columns)
+    after = len(df.columns)
     if before != after:
-        warnings.append(
-            f"Se eliminaron {before - after} columna(s) completamente vacías"
+        col_warnings.append(
+            f"Se eliminaron {before - after} columna(s) completamente vacías en '{sheet_name}'"
         )
 
     # 4. Normalizar columnas con nombres numéricos o solo espacios
+    # Usar enumerate para evitar list.index() que es O(n)
     renamed = {}
-    for col in df.columns:
+    for i, col in enumerate(df.columns):
         if col.strip() == "":
-            new_name = f"col_sin_nombre_{list(df.columns).index(col)}"
-            renamed[col] = new_name
+            renamed[col] = f"col_sin_nombre_{i}"
         elif re.match(r"^\d+$", col.strip()):
-            new_name = f"col_{col.strip()}"
-            renamed[col] = new_name
+            renamed[col] = f"col_{col.strip()}"
 
     if renamed:
         df = df.rename(columns=renamed)
-        warnings.append(
-            f"Se renombraron {len(renamed)} columna(s) con nombres numéricos o vacíos: "
-            f"{list(renamed.values())}"
+        col_warnings.append(
+            f"Se renombraron {len(renamed)} columna(s) con nombres numéricos o vacíos "
+            f"en '{sheet_name}': {list(renamed.values())}"
         )
 
-    # 5. Detectar columnas duplicadas
+    # 5. Detectar columnas duplicadas (pandas ya las renombra con .1, .2...)
     duplicated = df.columns[df.columns.duplicated()].tolist()
     if duplicated:
-        warnings.append(
-            f"Columnas duplicadas detectadas en '{sheet_name}': {duplicated}. "
-            f"Se han renombrado automáticamente (col, col.1, col.2...)"
+        col_warnings.append(
+            f"Columnas duplicadas en '{sheet_name}': {duplicated}. "
+            f"Se han renombrado automáticamente (nombre, nombre.1, nombre.2...)"
         )
-        # pandas ya las renombra con .1, .2 — solo avisamos
 
-    return df, warnings
+    return df, col_warnings
 
 
 # ─────────────────────────────────────────────
@@ -180,11 +206,8 @@ def _parse_csv(content: bytes, filename: str) -> list[ParsedSheet]:
     """
     Lee un CSV probando combinaciones de encoding y separador.
 
-    Maneja:
-    - BOM UTF-8 (utf-8-sig)
-    - Múltiples encodings (utf-8, latin-1, cp1252)
-    - Múltiples separadores (coma, punto y coma, tabulador)
-    - Fichero con solo cabecera → error claro
+    Encodings: utf-8-sig (BOM), utf-8, latin-1, cp1252
+    Separadores: coma, punto y coma, tabulador
     """
     for encoding in ["utf-8-sig", "utf-8", "latin-1", "cp1252"]:
         for sep in [",", ";", "\t"]:
@@ -201,16 +224,16 @@ def _parse_csv(content: bytes, filename: str) -> list[ParsedSheet]:
                 # Limpiar columnas
                 df, col_warnings = _clean_columns(df, filename)
 
-                # Una sola columna → separador incorrecto
+                # Una sola columna → separador incorrecto, probar siguiente
                 if len(df.columns) <= 1:
                     continue
 
-                # Eliminar filas completamente vacías
-                df = df.replace({"": None, "nan": None, "None": None})
+                # Limpiar valores nulos en sus múltiples formas
+                df = df.replace({"": None, "nan": None, "None": None, "NaT": None})
                 df = df.dropna(how="all")
                 df = df.reset_index(drop=True)
 
-                # Fichero con solo cabecera y sin datos
+                # Fichero con solo cabecera y sin datos → error claro
                 if len(df) == 0:
                     raise ValueError(
                         f"El fichero '{filename}' contiene cabeceras pero ningún dato. "
@@ -229,14 +252,14 @@ def _parse_csv(content: bytes, filename: str) -> list[ParsedSheet]:
                 )]
 
             except ValueError:
-                raise  # re-lanzar errores de validación
+                raise  # re-lanzar errores de validación propios
             except Exception:
-                continue
+                continue  # probar siguiente combinación encoding/sep
 
     raise ValueError(
         "No se pudo leer el CSV. "
         "Asegúrate de que el fichero es un CSV válido con columnas separadas "
-        "por coma, punto y coma o tabulador, y que el encoding es UTF-8 o Latin-1."
+        "por coma, punto y coma o tabulador, y encoding UTF-8 o Latin-1."
     )
 
 
@@ -248,37 +271,57 @@ def _parse_xlsx(content: bytes, filename: str) -> list[ParsedSheet]:
     """
     Lee todas las hojas procesables de un XLSX.
 
-    Maneja:
+    Usa openpyxl con data_only=True para leer valores calculados,
+    no las fórmulas en bruto. Maneja:
     - XLSX con contraseña → mensaje claro
-    - Celdas combinadas → se tratan como NaN en pandas (comportamiento correcto)
-    - Fórmulas → openpyxl con data_only=True lee el valor calculado
-    - Filas/columnas ocultas → se incluyen (pandas no distingue)
+    - Celdas combinadas → pandas las trata como NaN (correcto)
+    - Fórmulas → se leen los valores calculados, no =SUM(...)
     - Hojas vacías → se ignoran silenciosamente
     """
+    import openpyxl
+
     try:
-        xl = pd.ExcelFile(
+        wb = openpyxl.load_workbook(
             io.BytesIO(content),
-            engine="openpyxl"
+            data_only=True,   # leer valores calculados, NO fórmulas
+            read_only=True    # no cargar todo en memoria
         )
     except Exception as e:
         error_str = str(e).lower()
-        if "encrypted" in error_str or "password" in error_str or "decrypt" in error_str:
+        if any(kw in error_str for kw in ["encrypted", "password", "decrypt", "protected"]):
             raise ValueError(
                 "El fichero Excel está protegido con contraseña. "
-                "Elimina la protección antes de subir el fichero: "
+                "Elimina la protección antes de subir: "
                 "Revisar → Proteger libro → Quitar protección."
             )
         raise ValueError(f"No se pudo abrir el fichero Excel: {str(e)}")
 
     sheets = []
-    for sheet_name in xl.sheet_names:
+    for sheet_name in wb.sheetnames:
         try:
-            # data_only=True → leer valores calculados, no fórmulas
-            df = xl.parse(
-                sheet_name,
-                dtype=str,
-                keep_default_na=False
-            )
+            ws = wb[sheet_name]
+
+            # Leer todas las filas como valores
+            all_rows = list(ws.values)
+            if not all_rows:
+                continue
+
+            # Primera fila = cabeceras
+            headers = [
+                str(c).strip() if c is not None else f"col_{i}"
+                for i, c in enumerate(all_rows[0])
+            ]
+
+            # Resto de filas = datos
+            data_rows = [
+                [str(cell) if cell is not None else None for cell in row]
+                for row in all_rows[1:]
+            ]
+
+            if not data_rows:
+                continue
+
+            df = pd.DataFrame(data_rows, columns=headers)
 
             # Limpiar columnas
             df, col_warnings = _clean_columns(df, sheet_name)
@@ -287,8 +330,8 @@ def _parse_xlsx(content: bytes, filename: str) -> list[ParsedSheet]:
             if len(df.columns) < 2:
                 continue
 
-            # Limpiar valores
-            df = df.replace({"": None, "nan": None, "None": None})
+            # Limpiar valores nulos
+            df = df.replace({"": None, "nan": None, "None": None, "NaT": None})
             df = df.dropna(how="all")
             df = df.reset_index(drop=True)
 
@@ -307,9 +350,11 @@ def _parse_xlsx(content: bytes, filename: str) -> list[ParsedSheet]:
             ))
 
         except ValueError:
-            raise  # re-lanzar errores de validación
+            raise
         except Exception:
             continue  # hoja con error de formato — ignorar y continuar
+
+    wb.close()
 
     if not sheets:
         raise ValueError(

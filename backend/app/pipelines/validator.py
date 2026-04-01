@@ -1,20 +1,17 @@
 """
 validator.py — Quinta capa del pipeline.
 
-Responsabilidad: validar el DataFrame mapeado antes de transformar y cargar.
 Usa Pandera para validación declarativa de schemas.
+Clasifica cada fila como VALID / INVALID / REPAIRABLE / SKIPPED.
 
-Clasifica cada fila como:
-- VALID:      pasa todas las validaciones
-- INVALID:    falla en campo obligatorio → no se carga
-- REPAIRABLE: falla en campo opcional → se carga parcialmente
-- SKIPPED:    fila vacía → se omite sin error
+Fix aplicado: TODAY se calcula en tiempo de ejecución, no en import,
+para evitar que el servidor con días de uptime valide fechas incorrectamente.
 """
 import pandera as pa
 from pandera import Column, DataFrameSchema, Check, errors as pa_errors
 import pandas as pd
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import datetime
 from enum import Enum
 
 
@@ -31,6 +28,15 @@ class RowValidationResult:
     status: RowStatus
     errors: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
+
+
+def _get_today():
+    """
+    Devuelve la fecha actual en tiempo de ejecución.
+    NO usar variable global TODAY — si el servidor lleva días corriendo,
+    una constante tendría la fecha del arranque, no la de hoy.
+    """
+    return datetime.now().date()
 
 
 # ─────────────────────────────────────────────
@@ -82,7 +88,6 @@ CUSTOMERS_SCHEMA = DataFrameSchema(
         "customer_email": Column(
             pa.String, nullable=True, required=False,
             checks=[Check(
-                # Email estricto: requiere dominio con TLD de al menos 2 chars
                 lambda s: s.isna() | s.str.match(
                     r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
                 ),
@@ -127,8 +132,6 @@ MINIMUM_REQUIRED_FIELDS = {
     "products":  ["product_name"],
 }
 
-TODAY = datetime.now().date()
-
 
 def validate_dataframe(
     df: pd.DataFrame,
@@ -138,7 +141,7 @@ def validate_dataframe(
     Valida un DataFrame completo con Pandera en modo lazy.
     Devuelve (resultados por fila, DataFrame con filas procesables).
     """
-    # DataFrame vacío — return inmediato
+    # DataFrame vacío — return inmediato sin validar
     if df is None or df.empty:
         return [], df if df is not None else pd.DataFrame()
 
@@ -146,8 +149,13 @@ def validate_dataframe(
     schema         = SCHEMA_MAP.get(upload_type, ORDERS_SCHEMA)
     minimum_fields = MINIMUM_REQUIRED_FIELDS.get(upload_type, [])
 
+    # Fecha actual calculada en tiempo de ejecución
+    today = _get_today()
+
     # Eliminar filas completamente vacías → SKIPPED
-    empty_mask = df.isnull().all(axis=1) | (df.astype(str).replace("None", None).isnull().all(axis=1))
+    empty_mask = df.isnull().all(axis=1) | (
+        df.astype(str).replace("None", None).isnull().all(axis=1)
+    )
     for idx in df[empty_mask].index:
         results.append(RowValidationResult(
             row_index=int(idx),
@@ -196,7 +204,7 @@ def validate_dataframe(
                 "message":    f"Campo obligatorio ausente: {', '.join(missing_required)}"
             })
 
-        # Validación especial para customers: necesita al menos email o external_id
+        # Validación especial customers: necesita al menos email o external_id
         if upload_type == "customers":
             has_email = bool(row.get("customer_email")) and \
                         str(row.get("customer_email", "")).strip() not in ("", "nan", "None")
@@ -212,6 +220,8 @@ def validate_dataframe(
 
         # Validaciones de negocio para orders
         if upload_type in ("orders", "mixed"):
+
+            # Cantidades negativas → warning
             qty_val = row.get("quantity")
             if qty_val is not None and str(qty_val).strip() not in ("", "nan", "None"):
                 try:
@@ -224,25 +234,23 @@ def validate_dataframe(
                 except (ValueError, TypeError):
                     pass
 
-            # Fechas futuras — más de 1 día en el futuro es sospechoso
+            # Fechas futuras → error (usando _get_today(), no constante)
             date_val = row.get("order_date")
             if date_val is not None and str(date_val).strip() not in ("", "nan", "None"):
                 try:
                     from app.pipelines.transformer import parse_date
                     parsed_date = parse_date(str(date_val))
-                    if parsed_date and parsed_date > TODAY:
-                        from datetime import timedelta
-                        if parsed_date > TODAY:
-                            row_errors.append({
-                                "field":      "order_date",
-                                "error_type": "future_date",
-                                "value":      str(date_val),
-                                "message":    f"Fecha futura no permitida: {parsed_date}"
-                            })
+                    if parsed_date and parsed_date > today:
+                        row_errors.append({
+                            "field":      "order_date",
+                            "error_type": "future_date",
+                            "value":      str(date_val),
+                            "message":    f"Fecha futura no permitida: {parsed_date}"
+                        })
                 except Exception:
                     pass
 
-            # Importes negativos sin indicación de refund
+            # Importes negativos sin devolución → warning
             amount_val = row.get("total_amount")
             is_returned = str(row.get("is_returned", "")).lower() in (
                 "yes", "true", "1", "returned", "devuelto", "si", "sí", "refunded"
@@ -250,8 +258,9 @@ def validate_dataframe(
             if amount_val is not None and str(amount_val).strip() not in ("", "nan", "None"):
                 try:
                     amount = float(
-                        str(amount_val).replace(",", ".")
-                        .replace("€", "").replace("$", "").replace("£", "").strip()
+                        str(amount_val)
+                        .replace(",", ".").replace("€", "")
+                        .replace("$", "").replace("£", "").strip()
                     )
                     if amount < 0 and not is_returned:
                         warnings.append({
@@ -261,8 +270,7 @@ def validate_dataframe(
                 except (ValueError, TypeError):
                     pass
 
-        # Warnings para campos importantes pero no obligatorios vacíos
-        if upload_type in ("orders", "mixed"):
+            # Importe ausente → warning (KPIs limitados)
             if not row.get("total_amount") or \
                str(row.get("total_amount", "")).strip() in ("", "nan", "None"):
                 warnings.append({
