@@ -1,13 +1,13 @@
 """
 import_orchestrator.py — Capa de orquestación del pipeline.
 
-Fixes aplicados:
-- Try/except global en run_import → import nunca queda en "processing"
-- df.loc en lugar de df.iloc → índice correcto tras eliminar filas vacías
-- Sanitización de extra_attributes → campos sensibles no van a BD
-- Deduplicación con hash cuando external_id es None → evita duplicados
-- sheet.warnings propagados al usuario en el response
-- pandas importado al nivel del módulo
+Coordina todas las capas en orden:
+file_parser → detector → mapper → validator → transformer → canonical_loader
+
+Tipos soportados: orders, order_lines, customers, products, mixed.
+import_id en todas las entidades para trazabilidad y delete en cascada.
+Resolución automática de relaciones entre imports distintos.
+Los datos del usuario nunca salen del servidor.
 """
 import uuid
 import hashlib
@@ -24,6 +24,7 @@ from app.pipelines.mapper import (
 )
 from app.pipelines.transformer import transform_row
 from app.pipelines.validator import validate_dataframe, build_validation_summary
+from app.pipelines.entity_resolver import run_all_resolvers
 
 from app.models.import_record import Import
 from app.models.import_sheet import ImportSheet
@@ -34,7 +35,7 @@ from app.models.customer import Customer
 from app.models.product import Product
 
 
-# Campos que nunca deben ir a extra_attributes
+# SEGURIDAD
 SENSITIVE_FIELDS_BLOCKLIST = {
     "password", "contraseña", "passwd", "pin", "cvv", "cvc",
     "card_number", "numero_tarjeta", "tarjeta", "tarjeta_credito",
@@ -44,25 +45,14 @@ SENSITIVE_FIELDS_BLOCKLIST = {
     "secret", "token", "api_key", "private_key"
 }
 
-
 def _sanitize_extra(extra: dict) -> dict:
-    """
-    Elimina campos potencialmente sensibles de extra_attributes.
-    Cumplimiento básico de RGPD — datos financieros y de identidad
-    no deben guardarse en campos no estructurados.
-    """
     return {
         k: v for k, v in extra.items()
-        if k.lower().replace(" ", "_").replace("-", "_") not in SENSITIVE_FIELDS_BLOCKLIST
+        if k.lower().replace(" ", "_").replace("-", "_")
+        not in SENSITIVE_FIELDS_BLOCKLIST
     }
 
-
 def _generate_dedup_key(transformed: dict) -> str | None:
-    """
-    Genera una clave de deduplicación cuando no hay external_id.
-    Basada en hash MD5 de los campos clave del pedido.
-    No es perfecta pero previene duplicados obvios al subir el mismo fichero.
-    """
     date_val  = str(transformed.get("order_date", ""))
     total_val = str(transformed.get("total_amount", ""))
     prod_val  = str(transformed.get("product_name", ""))
@@ -73,29 +63,16 @@ def _generate_dedup_key(transformed: dict) -> str | None:
         return f"hash_{hashlib.md5(raw.encode()).hexdigest()}"
     return None
 
-
-# ─────────────────────────────────────────────
 # PUNTO DE ENTRADA PRINCIPAL
-# ─────────────────────────────────────────────
-
 def run_import(
     db: Session,
     tenant_id: str,
     filename: str,
     file_content: bytes
 ) -> dict:
-    """
-    Punto de entrada principal del pipeline.
-
-    SEGURIDAD:
-    - file_content nunca se escribe en disco — solo memoria
-    - tenant_id siempre viene del JWT — nunca del body del request
-    - Datos sensibles no se envían a servicios externos en esta capa
-    """
     file_size   = len(file_content)
     file_format = "xlsx" if filename.lower().endswith((".xlsx", ".xls")) else "csv"
 
-    # Crear registro Import
     import_record = Import(
         tenant_id=tenant_id,
         filename=filename,
@@ -108,7 +85,6 @@ def run_import(
     db.refresh(import_record)
     import_id = str(import_record.id)
 
-    # FASE 1 — Parsing del fichero
     try:
         sheets = parse_file(file_content, filename)
     except ValueError as e:
@@ -118,9 +94,6 @@ def run_import(
         db.commit()
         return _failed_response(import_id, filename, str(e))
 
-    # FASE 2 — Procesar cada hoja
-    # Try/except global: si cualquier hoja falla inesperadamente,
-    # el import se marca como failed en lugar de quedar en "processing"
     total_valid = total_invalid = total_skipped = 0
     sheet_results = []
 
@@ -138,7 +111,6 @@ def run_import(
             db.commit()
             return _failed_response(import_id, filename, import_record.error_message)
 
-    # Actualizar Import con totales finales
     total_rows = total_valid + total_invalid + total_skipped
     import_record.total_rows    = total_rows
     import_record.valid_rows    = total_valid
@@ -149,9 +121,17 @@ def run_import(
 
     detected_types = list({r["detected_type"] for r in sheet_results})
     import_record.detected_type        = detected_types[0] if len(detected_types) == 1 else "mixed"
-    import_record.detection_confidence = sheet_results[0]["detection_confidence"] if sheet_results else 0.0
-
+    import_record.detection_confidence = sheet_results[0]["detection_confidence"] \
+                                         if sheet_results else 0.0
     db.commit()
+
+    resolution_results = run_all_resolvers(db, tenant_id)
+
+    try:
+        from app.services.kpi_service import invalidate_kpi_cache
+        invalidate_kpi_cache(db, tenant_id)
+    except Exception:
+        pass
 
     return {
         "import_id":            import_id,
@@ -166,26 +146,18 @@ def run_import(
         "sheets":               sheet_results,
         "detected_type":        import_record.detected_type,
         "detection_confidence": import_record.detection_confidence,
+        "relations_resolved":   resolution_results,
     }
 
-
-# ─────────────────────────────────────────────
 # PROCESAMIENTO DE UNA HOJA
-# ─────────────────────────────────────────────
-
 def _process_sheet(
     db: Session,
     tenant_id: str,
     import_id: str,
     sheet: ParsedSheet
 ) -> dict:
-    """
-    Procesa una sola hoja del fichero.
-    Flujo: detección → mapping → validación → bulk insert canónico
-    """
     BATCH_SIZE = 1000
 
-    # Crear ImportSheet
     import_sheet = ImportSheet(
         import_id=import_id,
         tenant_id=tenant_id,
@@ -198,13 +170,11 @@ def _process_sheet(
     db.refresh(import_sheet)
     sheet_id = str(import_sheet.id)
 
-    # FASE 2a — Detección de tipo con confianza
     upload_type, confidence = detect_type_with_confidence(sheet.columns)
     import_sheet.detected_type        = upload_type.value
     import_sheet.detection_confidence = confidence
     db.commit()
 
-    # Tipo desconocido — guardar en staging y devolver diagnóstico útil
     if upload_type == UploadType.UNKNOWN or confidence < 0.3:
         _stage_all_rows(db, tenant_id, import_id, sheet_id, sheet, upload_type.value)
         import_sheet.status       = "completed"
@@ -232,7 +202,6 @@ def _process_sheet(
             )
         }
 
-    # FASE 2b — Mapping de columnas
     saved_mapping = get_saved_mapping(db, tenant_id, upload_type.value)
     if saved_mapping:
         mapping = saved_mapping
@@ -245,16 +214,13 @@ def _process_sheet(
         }
         persist_mapping(db, tenant_id, upload_type.value, mapping_with_confidence, import_id)
 
-    # FASE 2c — Aplicar mapping al DataFrame
     df           = sheet.dataframe.copy()
     rename_map   = {col: mapping[col] for col in df.columns if col in mapping}
     df_canonical = df.rename(columns=rename_map)
 
-    # FASE 2d — Validación con Pandera
     validation_results, processable_df = validate_dataframe(df_canonical, upload_type.value)
     summary = build_validation_summary(validation_results)
 
-    # Staging SOLO para filas inválidas — usando df.loc (índice correcto)
     invalid_results = [
         r for r in validation_results
         if r.status.value in ("invalid", "error")
@@ -262,8 +228,6 @@ def _process_sheet(
     if invalid_results:
         staging_records = []
         for result in invalid_results:
-            # Fix crítico: usar .loc con la etiqueta, no .iloc con la posición
-            # Tras eliminar filas vacías, el índice no es contiguo
             row_dict = df.loc[result.row_index].where(
                 pd.notna(df.loc[result.row_index]), None
             ).to_dict() if result.row_index in df.index else {}
@@ -293,27 +257,38 @@ def _process_sheet(
         except Exception:
             db.rollback()
 
-    # FASE 2e — Bulk insert al schema canónico
     valid_loaded = 0
 
     if not processable_df.empty:
         if upload_type in (UploadType.ORDERS, UploadType.MIXED):
             existing_ids = _get_existing_external_ids(db, tenant_id, Order)
-            valid_loaded  = _bulk_write_orders(
-                db, tenant_id, processable_df, df, mapping, existing_ids, BATCH_SIZE
+            valid_loaded = _bulk_write_orders(
+                db, tenant_id, import_id,
+                processable_df, df, mapping,
+                existing_ids, BATCH_SIZE
+            )
+        elif upload_type == UploadType.ORDER_LINES:
+            existing_ids = _get_existing_external_ids(db, tenant_id, OrderLine)
+            valid_loaded = _bulk_write_order_lines(
+                db, tenant_id, import_id,
+                processable_df, mapping,
+                existing_ids, BATCH_SIZE
             )
         elif upload_type == UploadType.CUSTOMERS:
             existing_ids = _get_existing_external_ids(db, tenant_id, Customer)
-            valid_loaded  = _bulk_write_customers(
-                db, tenant_id, processable_df, existing_ids, BATCH_SIZE
+            valid_loaded = _bulk_write_customers(
+                db, tenant_id, import_id,
+                processable_df,
+                existing_ids, BATCH_SIZE
             )
         elif upload_type == UploadType.PRODUCTS:
             existing_ids = _get_existing_external_ids(db, tenant_id, Product)
-            valid_loaded  = _bulk_write_products(
-                db, tenant_id, processable_df, existing_ids, BATCH_SIZE
+            valid_loaded = _bulk_write_products(
+                db, tenant_id, import_id,
+                processable_df,
+                existing_ids, BATCH_SIZE
             )
 
-    # Actualizar ImportSheet con resultados finales
     import_sheet.valid_rows   = valid_loaded
     import_sheet.invalid_rows = summary["invalid_rows"]
     import_sheet.skipped_rows = summary["skipped_rows"]
@@ -328,28 +303,21 @@ def _process_sheet(
         "invalid_rows":         summary["invalid_rows"],
         "skipped_rows":         summary["skipped_rows"],
         "top_errors":           summary.get("top_errors", []),
-        "file_warnings":        sheet.warnings,  # propagados al usuario
+        "file_warnings":        sheet.warnings,
     }
 
-
-# ─────────────────────────────────────────────
 # HELPERS DE RENDIMIENTO
-# ─────────────────────────────────────────────
-
 def _get_existing_external_ids(db: Session, tenant_id: str, model) -> set:
-    """
-    Carga todos los external_ids existentes para este tenant en UN solo query.
-    Incluye también los hashes de deduplicación (prefijo 'hash_').
-    """
     rows = db.query(model.external_id).filter(
         model.tenant_id == tenant_id,
         model.external_id.isnot(None)
     ).all()
     return {r[0] for r in rows}
 
-
 def _bulk_write_orders(
-    db, tenant_id, processable_df, original_df, mapping, existing_ids, batch_size
+    db, tenant_id, import_id,
+    processable_df, original_df, mapping,
+    existing_ids, batch_size
 ) -> int:
     orders_batch = []
     lines_batch  = []
@@ -359,18 +327,15 @@ def _bulk_write_orders(
         row_dict    = row.where(pd.notna(row), None).to_dict()
         transformed = transform_row(row_dict)
 
-        # Determinar clave de deduplicación
         ext_id = str(transformed["external_id"]) if transformed.get("external_id") else None
         if not ext_id:
             ext_id = _generate_dedup_key(transformed)
 
-        # Deduplicación en memoria
         if ext_id and ext_id in existing_ids:
             continue
         if ext_id:
             existing_ids.add(ext_id)
 
-        # Extra attributes — sanitizados
         extra = _sanitize_extra({
             col: row_dict.get(col)
             for col in original_df.columns
@@ -381,7 +346,10 @@ def _bulk_write_orders(
         orders_batch.append({
             "id":               order_id,
             "tenant_id":        tenant_id,
+            "import_id":        import_id,
             "customer_id":      None,
+            "customer_reference": transformed.get("customer_external_id") or
+                      transformed.get("customer_email"),
             "external_id":      ext_id,
             "order_date":       transformed.get("order_date"),
             "total_amount":     transformed.get("total_amount"),
@@ -409,6 +377,7 @@ def _bulk_write_orders(
             lines_batch.append({
                 "id":              str(uuid.uuid4()),
                 "tenant_id":       tenant_id,
+                "import_id":       import_id,
                 "order_id":        order_id,
                 "product_id":      None,
                 "external_id":     None,
@@ -453,9 +422,88 @@ def _bulk_write_orders(
 
     return loaded
 
+def _parse_bool(value) -> bool:
+    """Convierte cualquier representación de booleano a bool de Python."""
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    return str(value).lower().strip() in ("1", "true", "yes", "si", "sí")
+
+def _bulk_write_order_lines(
+    db, tenant_id, import_id,
+    processable_df, mapping,
+    existing_ids, batch_size
+) -> int:
+    """
+    Inserta líneas de pedido directamente desde ficheros tipo order_items.
+    order_id y product_id quedan NULL — entity_resolver los vincula después
+    usando external_id (= order_id del fichero origen) como clave de unión.
+    """
+    batch  = []
+    loaded = 0
+
+    for _, row in processable_df.iterrows():
+        row_dict    = row.where(pd.notna(row), None).to_dict()
+        transformed = transform_row(row_dict)
+
+        # external_id = order_item_id del CSV — para deduplicación
+        ext_id = str(transformed.get("external_id")) \
+                 if transformed.get("external_id") else None
+        if not ext_id:
+            ext_id = str(uuid.uuid4())
+
+        if ext_id in existing_ids:
+            continue
+        existing_ids.add(ext_id)
+
+        batch.append({
+            "id":              str(uuid.uuid4()),
+            "tenant_id":       tenant_id,
+            "import_id":       import_id,
+            "order_id":        None,         # resolver vincula después
+            "product_id":      None,         # resolver vincula después
+            "external_id":     ext_id,
+            "product_name":    transformed.get("product_name"),
+            "sku":             transformed.get("sku"),
+            "category":        transformed.get("category"),
+            "brand":           transformed.get("brand"),
+            "quantity":        transformed.get("quantity"),
+            "unit_price":      transformed.get("unit_price"),
+            "unit_cost":       transformed.get("unit_cost"),
+            "line_total":      transformed.get("line_total"),
+            "discount_amount": None,
+            "refund_amount":   transformed.get("refund_amount"),
+            "is_primary_item": _parse_bool(transformed.get("is_primary_item")),
+            "is_refunded":     _parse_bool(transformed.get("is_refunded", False)),
+            "extra_attributes": {},
+        })
+
+        if len(batch) >= batch_size:
+            try:
+                db.bulk_insert_mappings(OrderLine, batch)
+                db.commit()
+                loaded += len(batch)
+                batch   = []
+            except Exception:
+                db.rollback()
+                batch = []
+
+    if batch:
+        try:
+            db.bulk_insert_mappings(OrderLine, batch)
+            db.commit()
+            loaded += len(batch)
+        except Exception:
+            db.rollback()
+            batch=[]
+
+    return loaded
 
 def _bulk_write_customers(
-    db, tenant_id, processable_df, existing_ids, batch_size
+    db, tenant_id, import_id,
+    processable_df,
+    existing_ids, batch_size
 ) -> int:
     batch  = []
     loaded = 0
@@ -467,7 +515,6 @@ def _bulk_write_customers(
         ext_id = str(transformed["customer_external_id"]) \
                  if transformed.get("customer_external_id") else None
         if not ext_id:
-            # Para customers, usar email como clave alternativa
             email = transformed.get("customer_email")
             if email:
                 ext_id = f"email_{email}"
@@ -480,6 +527,7 @@ def _bulk_write_customers(
         batch.append({
             "id":               str(uuid.uuid4()),
             "tenant_id":        tenant_id,
+            "import_id":        import_id,
             "external_id":      str(transformed["customer_external_id"])
                                  if transformed.get("customer_external_id") else None,
             "email":            transformed.get("customer_email"),
@@ -515,9 +563,10 @@ def _bulk_write_customers(
 
     return loaded
 
-
 def _bulk_write_products(
-    db, tenant_id, processable_df, existing_ids, batch_size
+    db, tenant_id, import_id,
+    processable_df,
+    existing_ids, batch_size
 ) -> int:
     batch  = []
     loaded = 0
@@ -529,11 +578,10 @@ def _bulk_write_products(
         ext_id = str(transformed["product_external_id"]) \
                  if transformed.get("product_external_id") else None
         if not ext_id:
-            # Para productos, usar nombre+sku como clave alternativa
             name = transformed.get("product_name", "")
             sku  = transformed.get("sku", "")
             if name:
-                raw = f"{name}|{sku}"
+                raw    = f"{name}|{sku}"
                 ext_id = f"hash_{hashlib.md5(raw.encode()).hexdigest()}"
 
         if ext_id and ext_id in existing_ids:
@@ -544,6 +592,7 @@ def _bulk_write_products(
         batch.append({
             "id":               str(uuid.uuid4()),
             "tenant_id":        tenant_id,
+            "import_id":        import_id,
             "external_id":      str(transformed["product_external_id"])
                                  if transformed.get("product_external_id") else None,
             "name":             transformed.get("product_name", "Sin nombre"),
@@ -575,13 +624,8 @@ def _bulk_write_products(
 
     return loaded
 
-
-# ─────────────────────────────────────────────
 # HELPERS AUXILIARES
-# ─────────────────────────────────────────────
-
 def _stage_all_rows(db, tenant_id, import_id, sheet_id, sheet, upload_type):
-    """Guarda todas las filas en staging cuando el tipo es desconocido."""
     batch = []
     for idx, row in sheet.dataframe.iterrows():
         row_dict = row.where(pd.notna(row), None).to_dict()
@@ -621,14 +665,13 @@ def _stage_all_rows(db, tenant_id, import_id, sheet_id, sheet, upload_type):
         except Exception:
             db.rollback()
 
-
 def _build_unrecognized_hint(columns: list[str]) -> str:
-    """Diagnóstico cuando no se reconoce el tipo de hoja."""
     from rapidfuzz import fuzz
 
-    ORDER_SIGNALS    = ["order_date", "total_amount", "order_id", "fecha", "importe"]
-    CUSTOMER_SIGNALS = ["customer_id", "email", "customer_name", "correo"]
-    PRODUCT_SIGNALS  = ["product_name", "sku", "category", "brand"]
+    ORDER_SIGNALS      = ["order_date", "total_amount", "order_id", "fecha", "importe"]
+    ORDER_LINE_SIGNALS = ["order_item_id", "is_primary_item", "item_price", "line_total"]
+    CUSTOMER_SIGNALS   = ["customer_id", "email", "customer_name", "correo"]
+    PRODUCT_SIGNALS    = ["product_name", "sku", "category", "brand"]
 
     normalized = [c.lower().strip().replace(" ", "_") for c in columns]
 
@@ -641,19 +684,20 @@ def _build_unrecognized_hint(columns: list[str]) -> str:
                     break
         return hits
 
-    order_hits    = best_score(normalized, ORDER_SIGNALS)
-    customer_hits = best_score(normalized, CUSTOMER_SIGNALS)
-    product_hits  = best_score(normalized, PRODUCT_SIGNALS)
+    scores = {
+        "pedidos":         best_score(normalized, ORDER_SIGNALS),
+        "líneas de pedido": best_score(normalized, ORDER_LINE_SIGNALS),
+        "clientes":        best_score(normalized, CUSTOMER_SIGNALS),
+        "productos":       best_score(normalized, PRODUCT_SIGNALS),
+    }
 
-    best_type = max(
-        [("pedidos", order_hits), ("clientes", customer_hits), ("productos", product_hits)],
-        key=lambda x: x[1]
-    )
+    best_type = max(scores.items(), key=lambda x: x[1])
 
     if best_type[1] == 0:
         return (
             "Las columnas no coinciden con ningún tipo conocido. "
             "Para pedidos: fecha, importe, id_pedido. "
+            "Para líneas de pedido: order_item_id, is_primary_item. "
             "Para clientes: email, nombre, id_cliente. "
             "Para productos: nombre_producto, sku, categoria."
         )
@@ -664,7 +708,6 @@ def _build_unrecognized_hint(columns: list[str]) -> str:
         f"pero se necesitan al menos 2. "
         f"Revisa los nombres de columna."
     )
-
 
 def _failed_response(import_id, filename, error_message):
     return {
@@ -681,4 +724,5 @@ def _failed_response(import_id, filename, error_message):
         "detected_type":        "unknown",
         "detection_confidence": 0.0,
         "error":                error_message,
+        "relations_resolved":   None,
     }

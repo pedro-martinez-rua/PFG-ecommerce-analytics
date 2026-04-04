@@ -4,8 +4,7 @@ validator.py — Quinta capa del pipeline.
 Usa Pandera para validación declarativa de schemas.
 Clasifica cada fila como VALID / INVALID / REPAIRABLE / SKIPPED.
 
-Fix aplicado: TODAY se calcula en tiempo de ejecución, no en import,
-para evitar que el servidor con días de uptime valide fechas incorrectamente.
+Tipos soportados: orders, order_lines, customers, products.
 """
 import pandera as pa
 from pandera import Column, DataFrameSchema, Check, errors as pa_errors
@@ -32,9 +31,9 @@ class RowValidationResult:
 
 def _get_today():
     """
-    Devuelve la fecha actual en tiempo de ejecución.
-    NO usar variable global TODAY — si el servidor lleva días corriendo,
-    una constante tendría la fecha del arranque, no la de hoy.
+    Fecha actual en tiempo de ejecución.
+    No usar constante global — si el servidor lleva días corriendo,
+    la constante tendría la fecha del arranque.
     """
     return datetime.now().date()
 
@@ -82,6 +81,25 @@ ORDERS_SCHEMA = DataFrameSchema(
     coerce=False,
 )
 
+ORDER_LINES_SCHEMA = DataFrameSchema(
+    columns={
+        "external_id":     Column(pa.String, nullable=True, required=False),
+        "product_name":    Column(pa.String, nullable=True, required=False),
+        "sku":             Column(pa.String, nullable=True, required=False),
+        "category":        Column(pa.String, nullable=True, required=False),
+        "brand":           Column(pa.String, nullable=True, required=False),
+        "quantity":        Column(pa.String, nullable=True, required=False),
+        "unit_price":      Column(pa.String, nullable=True, required=False),
+        "unit_cost":       Column(pa.String, nullable=True, required=False),
+        "line_total":      Column(pa.String, nullable=True, required=False),
+        "is_primary_item": Column(pa.String, nullable=True, required=False),
+        "is_refunded":     Column(pa.String, nullable=True, required=False),
+        "refund_amount":   Column(pa.String, nullable=True, required=False),
+    },
+    strict=False,
+    coerce=False,
+)
+
 CUSTOMERS_SCHEMA = DataFrameSchema(
     columns={
         "customer_external_id": Column(pa.String, nullable=True, required=False),
@@ -121,15 +139,17 @@ PRODUCTS_SCHEMA = DataFrameSchema(
 )
 
 SCHEMA_MAP = {
-    "orders":    ORDERS_SCHEMA,
-    "customers": CUSTOMERS_SCHEMA,
-    "products":  PRODUCTS_SCHEMA,
+    "orders":      ORDERS_SCHEMA,
+    "order_lines": ORDER_LINES_SCHEMA,
+    "customers":   CUSTOMERS_SCHEMA,
+    "products":    PRODUCTS_SCHEMA,
 }
 
 MINIMUM_REQUIRED_FIELDS = {
-    "orders":    ["order_date"],
-    "customers": [],
-    "products":  ["product_name"],
+    "orders":      ["order_date"],
+    "order_lines": [],
+    "customers":   [],
+    "products":    ["product_name"],
 }
 
 
@@ -141,16 +161,13 @@ def validate_dataframe(
     Valida un DataFrame completo con Pandera en modo lazy.
     Devuelve (resultados por fila, DataFrame con filas procesables).
     """
-    # DataFrame vacío — return inmediato sin validar
     if df is None or df.empty:
         return [], df if df is not None else pd.DataFrame()
 
     results: list[RowValidationResult] = []
     schema         = SCHEMA_MAP.get(upload_type, ORDERS_SCHEMA)
     minimum_fields = MINIMUM_REQUIRED_FIELDS.get(upload_type, [])
-
-    # Fecha actual calculada en tiempo de ejecución
-    today = _get_today()
+    today          = _get_today()
 
     # Eliminar filas completamente vacías → SKIPPED
     empty_mask = df.isnull().all(axis=1) | (
@@ -167,7 +184,7 @@ def validate_dataframe(
     if df.empty:
         return results, df
 
-    # Validación Pandera en modo lazy — recoge TODOS los errores antes de reportar
+    # Validación Pandera en modo lazy
     pandera_errors: dict[int, list[dict]] = {}
     try:
         schema.validate(df, lazy=True)
@@ -189,7 +206,7 @@ def validate_dataframe(
         row_errors = pandera_errors.get(int(idx), [])
         warnings   = []
 
-        # Verificar campos obligatorios mínimos
+        # Campos obligatorios mínimos
         missing_required = []
         for f in minimum_fields:
             val = row.get(f)
@@ -204,7 +221,7 @@ def validate_dataframe(
                 "message":    f"Campo obligatorio ausente: {', '.join(missing_required)}"
             })
 
-        # Validación especial customers: necesita al menos email o external_id
+        # Customers: necesita al menos email o external_id
         if upload_type == "customers":
             has_email = bool(row.get("customer_email")) and \
                         str(row.get("customer_email", "")).strip() not in ("", "nan", "None")
@@ -220,8 +237,6 @@ def validate_dataframe(
 
         # Validaciones de negocio para orders
         if upload_type in ("orders", "mixed"):
-
-            # Cantidades negativas → warning
             qty_val = row.get("quantity")
             if qty_val is not None and str(qty_val).strip() not in ("", "nan", "None"):
                 try:
@@ -234,7 +249,6 @@ def validate_dataframe(
                 except (ValueError, TypeError):
                     pass
 
-            # Fechas futuras → error (usando _get_today(), no constante)
             date_val = row.get("order_date")
             if date_val is not None and str(date_val).strip() not in ("", "nan", "None"):
                 try:
@@ -250,8 +264,7 @@ def validate_dataframe(
                 except Exception:
                     pass
 
-            # Importes negativos sin devolución → warning
-            amount_val = row.get("total_amount")
+            amount_val  = row.get("total_amount")
             is_returned = str(row.get("is_returned", "")).lower() in (
                 "yes", "true", "1", "returned", "devuelto", "si", "sí", "refunded"
             )
@@ -270,7 +283,6 @@ def validate_dataframe(
                 except (ValueError, TypeError):
                     pass
 
-            # Importe ausente → warning (KPIs limitados)
             if not row.get("total_amount") or \
                str(row.get("total_amount", "")).strip() in ("", "nan", "None"):
                 warnings.append({
@@ -278,7 +290,7 @@ def validate_dataframe(
                     "message": "Importe total ausente — KPIs financieros limitados para esta fila"
                 })
 
-        # Clasificar la fila
+        # Clasificar
         if not row_errors:
             status = RowStatus.VALID
             valid_indices.append(idx)
@@ -303,7 +315,7 @@ def validate_dataframe(
 
 
 def build_validation_summary(results: list[RowValidationResult]) -> dict:
-    """Construye el resumen de validación para devolver al usuario."""
+    """Resumen de validación para devolver al usuario."""
     total      = len(results)
     valid      = sum(1 for r in results if r.status == RowStatus.VALID)
     repairable = sum(1 for r in results if r.status == RowStatus.REPAIRABLE)

@@ -6,11 +6,10 @@ from slowapi.errors import RateLimitExceeded
 from app.db.database import engine, Base
 from app.models import *
 from app.api.errors import http_exception_handler
-from app.api.routes import auth, imports
+from app.api.routes import auth, imports, kpis
 
 Base.metadata.create_all(bind=engine)
 
-# Rate limiter global — identifica clientes por IP
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
@@ -19,16 +18,13 @@ app = FastAPI(
     description="Plataforma SaaS de analítica para e-commerce"
 )
 
-# Registrar el limiter en el estado de la app
 app.state.limiter = limiter
-
-# Handlers de errores
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Routers
 app.include_router(auth.router)
 app.include_router(imports.router)
+app.include_router(kpis.router)
 
 
 @app.get("/health")
