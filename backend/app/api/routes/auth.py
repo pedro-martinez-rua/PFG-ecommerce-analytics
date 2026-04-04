@@ -58,11 +58,19 @@ def login(
         )
     return token
 
-
 @router.get("/me", response_model=UserResponse)
-def me(current_user: User = Depends(get_current_user)):
-    """
-    Devuelve los datos del usuario autenticado.
-    Endpoint protegido — requiere JWT válido.
-    """
-    return current_user
+def me(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from app.models.tenant import Tenant
+    tenant = db.query(Tenant).filter_by(id=current_user.tenant_id).first()
+    return {
+        "id":           current_user.id,
+        "tenant_id":    current_user.tenant_id,
+        "email":        current_user.email,
+        "full_name":    current_user.full_name,
+        "is_active":    current_user.is_active,
+        "role":         current_user.role,
+        "company_name": tenant.name if tenant else None
+    }
