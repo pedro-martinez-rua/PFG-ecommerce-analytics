@@ -134,9 +134,12 @@ def load_order_lines(
     return pd.DataFrame(rows, columns=list(result.keys())) if rows else pd.DataFrame()
 
 def load_all_orders(db: Session, tenant_id: str) -> pd.DataFrame:
-    """Todos los pedidos históricos — para comparativa new vs returning."""
     result = db.execute(text("""
-        SELECT id::text, customer_id::text, order_date, total_amount::float
+        SELECT
+            id::text,
+            COALESCE(customer_reference, customer_id::text) AS customer_id,
+            order_date,
+            total_amount::float
         FROM orders
         WHERE tenant_id = :tenant_id
     """), {"tenant_id": tenant_id})
