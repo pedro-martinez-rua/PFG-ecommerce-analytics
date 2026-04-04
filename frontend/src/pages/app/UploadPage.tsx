@@ -1,0 +1,288 @@
+import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+
+import { Button } from '@/components/ui/button';
+import { uploadDataset } from '@/lib/api';
+import { Dataset } from '@/lib/types';
+import {
+  Upload,
+  FileSpreadsheet,
+  FileJson,
+  File,
+  CheckCircle2,
+  AlertCircle,
+  X,
+} from 'lucide-react';
+
+type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
+
+export function UploadPage() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+
+  const [dragActive, setDragActive] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [status, setStatus] = useState<UploadStatus>('idle');
+  const [dataset, setDataset] = useState<Dataset | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const MAX_SIZE_MB = 50;
+  const maxSizeBytes = MAX_SIZE_MB * 1024 * 1024;
+
+  const validateFile = (file: File): string | null => {
+    const validTypes = [
+      'text/csv',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/json',
+    ];
+
+    const validExtensions = ['.csv', '.xlsx', '.xls', '.json'];
+    const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+
+    if (!validTypes.includes(file.type) && !validExtensions.includes(extension)) {
+      return t('upload.validation.type');
+    }
+
+    if (file.size > maxSizeBytes) {
+      return t('upload.validation.size', { max: MAX_SIZE_MB });
+    }
+
+    return null;
+  };
+
+  const handleFile = useCallback(
+    async (selectedFile: File) => {
+      const validationError = validateFile(selectedFile);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
+
+      setFile(selectedFile);
+      setError(null);
+      setStatus('uploading');
+
+      try {
+        const result = await uploadDataset(selectedFile);
+        setDataset(result);
+        setStatus('success');
+      } catch {
+        setError(t('upload.errors.uploadFailed'));
+        setStatus('error');
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t]
+  );
+
+  const handleDrag = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragActive(true);
+    } else if (e.type === 'dragleave') {
+      setDragActive(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragActive(false);
+
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        handleFile(e.dataTransfer.files[0]);
+      }
+    },
+    [handleFile]
+  );
+
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+        handleFile(e.target.files[0]);
+      }
+    },
+    [handleFile]
+  );
+
+  const handleReset = () => {
+    setFile(null);
+    setDataset(null);
+    setStatus('idle');
+    setError(null);
+  };
+
+  const getFileIcon = (filename: string) => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    if (ext === 'json') return FileJson;
+    if (ext === 'csv' || ext === 'xlsx' || ext === 'xls') return FileSpreadsheet;
+    return File;
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground mb-2">
+          {t('upload.title')}
+        </h1>
+        <p className="text-muted-foreground">
+          {t('upload.subtitle')}
+        </p>
+      </div>
+
+      {/* Success State */}
+      {status === 'success' && dataset && (
+        <div className="bg-background rounded-lg border p-8 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-success/10 mb-4">
+            <CheckCircle2 className="h-8 w-8 text-success" />
+          </div>
+
+          <h2 className="text-xl font-semibold text-foreground mb-2">
+            {t('upload.success.title')}
+          </h2>
+          <p className="text-muted-foreground mb-6">
+            {t('upload.success.subtitle')}
+          </p>
+
+          <div className="bg-muted rounded-lg p-4 mb-6 text-left">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-muted-foreground">{t('upload.success.summary.dataset')}</p>
+                <p className="font-medium text-foreground">{dataset.name}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">{t('upload.success.summary.fileType')}</p>
+                <p className="font-medium text-foreground uppercase">{dataset.fileType}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">{t('upload.success.summary.rows')}</p>
+                <p className="font-medium text-foreground">{dataset.rowCount.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">{t('upload.success.summary.columns')}</p>
+                <p className="font-medium text-foreground">{dataset.columnCount}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3 justify-center">
+            <Button onClick={() => navigate('/app/dashboards')}>
+              {t('upload.success.actions.viewDashboards')}
+            </Button>
+            <Button variant="outline" onClick={handleReset}>
+              {t('upload.success.actions.uploadAnother')}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Area */}
+      {status !== 'success' && (
+        <>
+          <div
+            className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+              dragActive
+                ? 'border-secondary bg-secondary/5'
+                : 'border-border hover:border-muted-foreground/50'
+            } ${status === 'uploading' ? 'opacity-50 pointer-events-none' : ''}`}
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+          >
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls,.json"
+              onChange={handleInputChange}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              disabled={status === 'uploading'}
+            />
+
+            <div className="space-y-4">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-muted">
+                <Upload className="h-6 w-6 text-muted-foreground" />
+              </div>
+
+              <div>
+                <p className="text-lg font-medium text-foreground">
+                  {status === 'uploading'
+                    ? t('upload.dropzone.uploading')
+                    : t('upload.dropzone.title')}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {t('upload.dropzone.subtitle')}
+                </p>
+              </div>
+
+              <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <FileSpreadsheet className="h-3 w-3" />
+                  {t('upload.formats.csv')}
+                </span>
+                <span className="flex items-center gap-1">
+                  <FileSpreadsheet className="h-3 w-3" />
+                  {t('upload.formats.excel')}
+                </span>
+                <span className="flex items-center gap-1">
+                  <FileJson className="h-3 w-3" />
+                  {t('upload.formats.json')}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="flex items-start gap-3 bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+              <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-destructive">{error}</p>
+              </div>
+              <button
+                onClick={() => setError(null)}
+                className="text-destructive hover:text-destructive/80"
+                aria-label={t('upload.errors.dismiss')}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          {/* File Preview */}
+          {file && status === 'uploading' && (
+            <div className="flex items-center gap-3 bg-muted rounded-lg p-4">
+              {(() => {
+                const Icon = getFileIcon(file.name);
+                return <Icon className="h-8 w-8 text-muted-foreground" />;
+              })()}
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-foreground truncate">{file.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  {(file.size / 1024 / 1024).toFixed(2)} MB
+                </p>
+              </div>
+              <div className="h-5 w-5 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+
+          {/* Help Text */}
+          <div className="bg-muted/50 rounded-lg p-4">
+            <h3 className="font-medium text-foreground mb-2">
+              {t('upload.tips.title')}
+            </h3>
+            <ul className="text-sm text-muted-foreground space-y-1">
+              <li>• {t('upload.tips.items.headers')}</li>
+              <li>• {t('upload.tips.items.dates')}</li>
+              <li>• {t('upload.tips.items.numbers')}</li>
+              <li>• {t('upload.tips.items.maxSize', { max: MAX_SIZE_MB })}</li>
+            </ul>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,730 @@
+{
+  "common": {
+    "language": "Idioma",
+    "goHome": "Ir al inicio",
+    "notFoundTitle": "Página no encontrada",
+    "notFoundDesc": "La página que buscas no existe."
+  },
+  "nav": {
+    "product": "Producto",
+    "tutorials": "Tutoriales",
+    "faq": "FAQ",
+    "contact": "Contacto",
+    "login": "Iniciar sesión",
+    "register": "Crear cuenta",
+
+    "language": "Idioma",
+    "lang": {
+      "es": "Español",
+      "en": "Inglés"
+    }
+  },
+  "app": {
+    "brand": "CommerceIQ",
+
+    "sidebar": {
+      "overview": "Resumen",
+      "upload": "Subir datos",
+      "dashboards": "Dashboards",
+      "reports": "Informes guardados",
+      "tutorials": "Tutoriales",
+      "faq": "FAQ",
+      "contact": "Contacto",
+      "profile": "Perfil y ajustes"
+    },
+
+    "topbar": {
+      "selectWorkspace": "Seleccionar espacio",
+      "notifications": "Notificaciones"
+    },
+
+    "user": {
+      "profile": "Perfil y ajustes",
+      "logout": "Cerrar sesión"
+    },
+
+    "plan": {
+      "free": "Plan gratuito",
+      "starter": "Plan inicial",
+      "professional": "Plan profesional"
+    }
+  },
+  "auth": {
+    "brand": "CommerceIQ",
+    "footer": {
+      "privacy": "Privacidad",
+      "terms": "Términos",
+      "contact": "Contacto"
+    }
+  },
+  "footer": {
+    "brand": "CommerceIQ",
+    "tagline": "Analítica para e-commerce, sin complicaciones. Sube tus datos y obtén insights al instante.",
+
+    "sections": {
+      "product": "Producto",
+      "company": "Empresa",
+      "legal": "Legal"
+    },
+
+    "links": {
+      "features": "Funcionalidades",
+      "tutorials": "Tutoriales",
+      "faq": "Preguntas frecuentes",
+      "contact": "Contacto",
+      "about": "Acerca de",
+      "careers": "Empleo",
+      "privacyPolicy": "Política de privacidad",
+      "termsOfService": "Términos del servicio",
+      "security": "Seguridad"
+    },
+
+    "copyright": "© {{year}} CommerceIQ. Todos los derechos reservados."
+  },
+  "home": {
+    "hero": {
+      "badge": "Ahora con insights impulsados por IA",
+      "title": "Analítica para e-commerce",
+      "highlight": "sin complicaciones",
+      "description": "Sube los datos de tu tienda y obtén dashboards y KPIs al instante. Sin configuraciones complejas ni conocimientos técnicos.",
+      "ctaPrimary": "Crear cuenta",
+      "ctaSecondary": "Iniciar sesión"
+    },
+
+    "problem": {
+      "title": "¿Cansado del caos en Excel?",
+      "description": "Muchos e-commerce pierden horas exportando datos y creando tablas. Hay una forma mejor."
+    },
+
+    "howItWorks": {
+      "title": "Cómo funciona",
+      "subtitle": "De datos en bruto a decisiones claras en tres pasos.",
+      "steps": {
+        "step1": {
+          "title": "Sube tus datos",
+          "description": "Exporta los datos de tu tienda y súbelos. Soportamos los formatos más comunes."
+        },
+        "step2": {
+          "title": "Obtén KPIs al instante",
+          "description": "Detectamos automáticamente la estructura y generamos métricas relevantes."
+        },
+        "step3": {
+          "title": "Explora y actúa",
+          "description": "Analiza dashboards, filtra y toma decisiones basadas en datos reales."
+        }
+      }
+    },
+
+    "benefits": {
+      "title": "¿Por qué InsightFlow?",
+      "subtitle": "Pensado para negocios que quieren claridad sin complejidad.",
+      "items": {
+        "decisions": {
+          "title": "Decisiones basadas en datos",
+          "description": "Deja de adivinar y entiende qué funciona realmente."
+        },
+        "time": {
+          "title": "Ahorra horas cada semana",
+          "description": "Olvídate del análisis manual en hojas de cálculo."
+        },
+        "teams": {
+          "title": "Diseñado para equipos",
+          "description": "Comparte dashboards y alinea a todo tu equipo."
+        }
+      }
+    },
+
+    "features": {
+      "title": "Todo lo que necesitas",
+      "subtitle": "Potencia analítica sin curva de aprendizaje.",
+      "items": {
+        "upload": {
+          "title": "Carga de datos sencilla",
+          "description": "Arrastra y suelta archivos CSV, Excel o JSON."
+        },
+        "dashboards": {
+          "title": "Dashboards instantáneos",
+          "description": "KPIs y visualizaciones automáticas."
+        },
+        "ai": {
+          "title": "Insights con IA",
+          "description": "Análisis opcional para detectar oportunidades."
+        },
+        "security": {
+          "title": "Seguridad empresarial",
+          "description": "Arquitectura multi-tenant con aislamiento total."
+        },
+        "realtime": {
+          "title": "Analítica en tiempo real",
+          "description": "Ventas, pedidos y métricas personalizadas."
+        },
+        "export": {
+          "title": "Exporta y comparte",
+          "description": "Guarda informes y compártelos con tu equipo."
+        }
+      }
+    },
+
+    "cta": {
+      "title": "¿Listo para entender mejor tu tienda?",
+      "description": "Empieza gratis. Sin tarjeta. Resultados en minutos.",
+      "primary": "Empieza gratis",
+      "secondary": "Habla con nosotros"
+    }
+  },
+  "tutorials": {
+    "loading": "Cargando tutoriales...",
+    "title": "Tutoriales y guías",
+    "subtitle": "Aprende a sacar el máximo partido a InsightFlow con guías paso a paso.",
+
+    "readTime": "{{time}} min de lectura",
+
+    "categories": {
+      "getting-started": "Primeros pasos",
+      "data-upload": "Carga de datos",
+      "dashboards": "Dashboards y KPIs",
+      "advanced": "Avanzado"
+    }
+  },
+  "tutorialDetail": {
+    "loading": "Cargando tutorial...",
+    "back": "Volver a tutoriales",
+
+    "notFound": {
+      "title": "Tutorial no encontrado",
+      "description": "El tutorial que buscas no existe o ha sido movido.",
+      "action": "Ver todos los tutoriales"
+    },
+
+    "feedback": {
+      "question": "¿Te ha resultado útil este tutorial?",
+      "positive": "Sí, gracias",
+      "negative": "Podría mejorar"
+    }
+  }, 
+  "faq": {
+    "loading": "Cargando preguntas frecuentes...",
+    "title": "Preguntas frecuentes",
+    "subtitle": "Encuentra respuestas a las dudas más comunes sobre InsightFlow.",
+
+    "categories": {
+      "general": "General",
+      "pricing": "Precios",
+      "data": "Datos",
+      "security": "Seguridad",
+      "account": "Cuenta"
+    },
+
+    "footer": {
+      "text": "¿Sigues teniendo dudas? Estamos aquí para ayudarte.",
+      "link": "Contacta con nuestro equipo de soporte"
+    }
+  },
+   "contact": {
+    "title": "Contacto",
+    "subtitle": "¿Tienes una pregunta o necesitas ayuda? Nos encantará escucharte.",
+
+    "info": {
+      "emailLabel": "Email",
+      "hoursLabel": "Horario de atención",
+      "hoursDays": "Lunes - Viernes",
+      "hoursTime": "9:00 - 18:00 (EST)"
+    },
+
+    "form": {
+      "name": {
+        "label": "Nombre *",
+        "placeholder": "Tu nombre"
+      },
+      "email": {
+        "label": "Email *",
+        "placeholder": "tu@ejemplo.com"
+      },
+      "company": {
+        "label": "Empresa (opcional)",
+        "placeholder": "Nombre de tu empresa"
+      },
+      "message": {
+        "label": "Mensaje *",
+        "placeholder": "¿En qué podemos ayudarte?"
+      },
+      "submit": {
+        "default": "Enviar mensaje",
+        "loading": "Enviando..."
+      }
+    },
+
+    "validation": {
+      "nameRequired": "Por favor, introduce tu nombre",
+      "emailRequired": "Por favor, introduce tu email",
+      "emailInvalid": "Por favor, introduce un email válido",
+      "messageRequired": "Por favor, introduce tu mensaje",
+      "messageMin": "Por favor, proporciona más detalles (al menos {{min}} caracteres)"
+    },
+
+    "success": {
+      "title": "¡Mensaje enviado!",
+      "description": "Gracias por contactarnos. Te responderemos en 1-2 días laborables.",
+      "cta": "Enviar otro mensaje"
+    }
+  },
+   "forgotPassword": {
+    "title": "Restablecer contraseña",
+    "subtitle": "Introduce tu email y te enviaremos un enlace para restablecerla",
+
+    "form": {
+      "email": {
+        "label": "Email",
+        "placeholder": "tu@ejemplo.com"
+      }
+    },
+
+    "validation": {
+      "emailRequired": "El email es obligatorio",
+      "emailInvalid": "Por favor, introduce un email válido"
+    },
+
+    "actions": {
+      "sending": "Enviando...",
+      "sendLink": "Enviar enlace",
+      "resend": "Reenviar email",
+      "backToLogin": "Volver a iniciar sesión"
+    },
+
+    "success": {
+      "title": "Revisa tu email",
+      "description": "Hemos enviado un enlace para restablecer la contraseña a",
+      "helper": "¿No has recibido el email? Revisa la carpeta de spam o prueba con otra dirección."
+    }
+  },
+  "login": {
+    "title": "Bienvenido de nuevo",
+    "subtitle": "Inicia sesión para continuar",
+
+    "form": {
+      "email": {
+        "label": "Email",
+        "placeholder": "tu@ejemplo.com"
+      },
+      "password": {
+        "label": "Contraseña",
+        "placeholder": "••••••••",
+        "forgot": "¿Has olvidado tu contraseña?"
+      }
+    },
+
+    "actions": {
+      "signIn": "Iniciar sesión",
+      "signingIn": "Iniciando sesión..."
+    },
+
+    "validation": {
+      "emailRequired": "El email es obligatorio",
+      "emailInvalid": "Por favor, introduce un email válido",
+      "passwordRequired": "La contraseña es obligatoria",
+      "passwordMin": "La contraseña debe tener al menos {{min}} caracteres"
+    },
+
+    "footer": {
+      "noAccount": "¿No tienes cuenta?",
+      "createOne": "Crear una"
+    },
+
+    "demo": {
+      "title": "Credenciales demo:",
+      "credentials": "admin@example.com / password123"
+    }
+  },
+   "register": {
+    "title": "Crea tu cuenta",
+    "subtitle": "Empieza a analizar los datos de tu tienda en minutos",
+
+    "form": {
+      "fullName": {
+        "label": "Nombre completo",
+        "placeholder": "Juan Pérez"
+      },
+      "email": {
+        "label": "Email",
+        "placeholder": "tu@ejemplo.com"
+      },
+      "company": {
+        "label": "Nombre de la empresa",
+        "placeholder": "Tu tienda"
+      },
+      "password": {
+        "label": "Contraseña",
+        "placeholder": "••••••••"
+      },
+      "confirmPassword": {
+        "label": "Confirmar contraseña",
+        "placeholder": "••••••••"
+      },
+      "terms": {
+        "prefix": "Acepto los",
+        "termsOfService": "Términos del servicio",
+        "middle": "y la",
+        "privacyPolicy": "Política de privacidad"
+      }
+    },
+
+    "actions": {
+      "create": "Crear cuenta",
+      "creating": "Creando cuenta..."
+    },
+
+    "validation": {
+      "fullNameRequired": "El nombre completo es obligatorio",
+      "fullNameInvalid": "Por favor, introduce tu nombre completo",
+      "emailRequired": "El email es obligatorio",
+      "emailInvalid": "Por favor, introduce un email válido",
+      "passwordRequired": "La contraseña es obligatoria",
+      "passwordMin": "La contraseña debe tener al menos {{min}} caracteres",
+      "passwordComplexity": "La contraseña debe incluir mayúscula, minúscula y un número",
+      "confirmPasswordRequired": "Por favor, confirma tu contraseña",
+      "passwordsNoMatch": "Las contraseñas no coinciden",
+      "companyRequired": "El nombre de la empresa es obligatorio",
+      "termsRequired": "Debes aceptar los términos y condiciones"
+    },
+
+    "footer": {
+      "haveAccount": "¿Ya tienes una cuenta?",
+      "signIn": "Iniciar sesión"
+    }
+  },
+   "dashboards": {
+    "loading": "Cargando dashboards...",
+
+    "title": "Dashboards",
+    "subtitle": "Visualiza y gestiona tus dashboards de analítica.",
+
+    "actions": {
+      "new": "Nuevo dashboard"
+    },
+
+    "empty": {
+      "title": "Aún no tienes dashboards",
+      "description": "Crea tu primer dashboard subiendo datos o pulsa el botón para empezar.",
+      "action": "Subir datos"
+    },
+
+    "badges": {
+      "default": "Predeterminado"
+    },
+
+    "meta": {
+      "updated": "Actualizado {{date}}",
+      "kpis": "{{count}} KPI",
+      "kpis_plural": "{{count}} KPIs"
+    }
+  },
+   "dashboardDetail": {
+    "loading": "Cargando dashboard...",
+
+    "back": "Volver a dashboards",
+
+    "notFound": {
+      "title": "Dashboard no encontrado",
+      "description": "El dashboard que buscas no existe o ha sido eliminado.",
+      "action": "Ver todos los dashboards"
+    },
+
+    "actions": {
+      "export": "Exportar",
+      "saveReport": "Guardar informe",
+      "explain": "Explicar resultados"
+    },
+
+    "filters": {
+      "dateRange": {
+        "placeholder": "Rango de fechas",
+        "options": {
+          "7d": "Últimos 7 días",
+          "30d": "Últimos 30 días",
+          "90d": "Últimos 90 días",
+          "1y": "Último año"
+        }
+      },
+      "category": {
+        "placeholder": "Categoría",
+        "options": {
+          "all": "Todas las categorías",
+          "apparel": "Ropa",
+          "electronics": "Electrónica",
+          "home": "Hogar y jardín"
+        }
+      }
+    },
+
+    "dateRanges": {
+      "7d": "7 días",
+      "30d": "30 días",
+      "90d": "90 días",
+      "1y": "año"
+    },
+
+    "charts": {
+      "revenue": {
+        "title": "Ingresos en el tiempo",
+        "subtitle": "Últimos {{range}}"
+      },
+      "orders": {
+        "title": "Pedidos por producto",
+        "subtitle": "Productos con mejor rendimiento"
+      },
+      "acquisition": {
+        "title": "Adquisición de clientes",
+        "subtitle": "Nuevos vs recurrentes"
+      },
+      "funnel": {
+        "title": "Embudo de conversión",
+        "subtitle": "Del visitante a la compra"
+      }
+    }
+  },
+  "overview": {
+    "welcome": {
+      "title": "Bienvenido de nuevo, {{name}}",
+      "subtitle": "Esto es lo que está pasando en {{tenant}} hoy."
+    },
+
+    "sections": {
+      "keyMetrics": "Métricas clave",
+      "continue": "Continúa donde lo dejaste",
+      "latestInsights": "Últimos insights",
+      "nextSteps": "Siguientes pasos"
+    },
+
+    "actions": {
+      "viewAll": "Ver todo",
+      "openDashboard": "Abrir dashboard"
+    },
+
+    "meta": {
+      "lastUpdated": "Última actualización {{date}}"
+    },
+
+    "charts": {
+      "revenue": {
+        "title": "Tendencia de ingresos",
+        "subtitle": "Últimos 30 días"
+      },
+      "orders": {
+        "title": "Pedidos por categoría",
+        "subtitle": "Este mes"
+      }
+    },
+
+    "insights": {
+      "empty": "Aún no hay insights. Sube más datos para generarlos."
+    },
+
+    "nextActions": {
+      "upload": {
+        "title": "Subir nuevos datos",
+        "description": "Añade datos recientes para actualizar tu analítica"
+      },
+      "dashboard": {
+        "title": "Crear un dashboard",
+        "description": "Crea vistas personalizadas para análisis específicos"
+      },
+      "ai": {
+        "title": "Explorar insights con IA",
+        "description": "Obtén recomendaciones automatizadas"
+      }
+    }
+  },
+   "profile": {
+    "title": "Perfil y ajustes",
+    "subtitle": "Gestiona la configuración y preferencias de tu cuenta.",
+
+    "tabs": {
+      "profile": "Perfil",
+      "company": "Empresa",
+      "security": "Seguridad",
+      "billing": "Facturación",
+      "members": "Miembros"
+    },
+
+    "fields": {
+      "fullName": "Nombre completo",
+      "email": "Email",
+      "role": "Rol",
+      "companyName": "Nombre de la empresa"
+    },
+
+    "roles": {
+      "admin": "Admin",
+      "collaborator": "Colaborador"
+    },
+
+    "actions": {
+      "saveChanges": "Guardar cambios",
+      "saving": "Guardando...",
+      "saved": "Guardado"
+    },
+
+    "profileSection": {
+      "title": "Información personal",
+      "emailLocked": "El email no se puede cambiar"
+    },
+
+    "companySection": {
+      "title": "Información de la empresa",
+      "currentPlan": "Plan actual",
+      "dataRetention": "Retención de datos",
+      "retentionValue": "{{days}} días"
+    },
+
+    "company": {
+      "plans": {
+        "free": "Gratis",
+        "pro": "Pro",
+        "enterprise": "Enterprise"
+      }
+    },
+
+    "securitySection": {
+      "changePassword": "Cambiar contraseña",
+      "currentPassword": "Contraseña actual",
+      "newPassword": "Nueva contraseña",
+      "confirmNewPassword": "Confirmar nueva contraseña",
+      "updatePassword": "Actualizar contraseña",
+
+      "activeSessions": "Sesiones activas",
+      "currentSession": "Sesión actual",
+      "lastActive": "Última actividad: {{value}}",
+      "justNow": "Ahora mismo",
+      "active": "Activa"
+    },
+
+    "billingSection": {
+      "title": "Facturación y suscripción",
+      "comingSoon": "La funcionalidad de facturación estará disponible pronto.",
+      "description": "Gestiona aquí tu suscripción y métodos de pago.",
+      "adminOnly": "Solo los administradores pueden acceder a la configuración de facturación."
+    },
+
+    "membersSection": {
+      "title": "Miembros del equipo",
+      "invite": "Invitar miembro",
+      "adminOnly": "Solo los administradores pueden gestionar los miembros del equipo."
+    }
+  },
+  "reports": {
+    "loading": "Cargando informes...",
+
+    "title": "Informes guardados",
+    "subtitle": "Consulta tus snapshots y reportes guardados de dashboards.",
+
+    "empty": {
+      "title": "No hay informes guardados",
+      "description": "Guarda un snapshot de un dashboard para crear tu primer informe.",
+      "action": "Ver dashboards"
+    },
+
+    "table": {
+      "reportName": "Nombre del informe",
+      "dashboard": "Dashboard",
+      "kpiSummary": "Resumen KPIs",
+      "created": "Creado"
+    },
+
+    "actions": {
+      "open": "Abrir"
+    }
+  },
+  "upload": {
+    "title": "Subir datos",
+    "subtitle": "Sube los datos de tu tienda para generar dashboards e insights.",
+
+    "dropzone": {
+      "title": "Suelta tu archivo aquí",
+      "subtitle": "o haz clic para buscar",
+      "uploading": "Subiendo..."
+    },
+
+    "formats": {
+      "csv": "CSV",
+      "excel": "Excel",
+      "json": "JSON"
+    },
+
+    "validation": {
+      "type": "Por favor, sube un archivo CSV, Excel o JSON.",
+      "size": "El archivo debe pesar menos de {{max}}MB."
+    },
+
+    "errors": {
+      "uploadFailed": "La subida ha fallado. Por favor, inténtalo de nuevo.",
+      "dismiss": "Cerrar error"
+    },
+
+    "success": {
+      "title": "¡Subida completada!",
+      "subtitle": "Tus datos se han procesado y están listos para analizar.",
+
+      "summary": {
+        "dataset": "Dataset",
+        "fileType": "Tipo de archivo",
+        "rows": "Filas",
+        "columns": "Columnas"
+      },
+
+      "actions": {
+        "viewDashboards": "Ver dashboards",
+        "uploadAnother": "Subir otro"
+      }
+    },
+
+    "tips": {
+      "title": "Consejos de formato de datos",
+      "items": {
+        "headers": "Incluye encabezados de columna en la primera fila",
+        "dates": "Usa formatos de fecha consistentes (recomendado: YYYY-MM-DD)",
+        "numbers": "Asegúrate de que los valores numéricos no incluyan símbolos de moneda",
+        "maxSize": "Tamaño máximo del archivo: {{max}}MB"
+      }
+    }
+  },
+  "terms": {
+    "title": "Términos y Condiciones de Uso",
+    "subtitle": "Condiciones legales que regulan el uso de la plataforma CommerceIQ.",
+    "sections": {
+      "1": { "title": "Identificación", "content": "Este documento regula el acceso y uso de la plataforma SaaS CommerceIQ, titularidad de CommerceIQ, con domicilio en Madrid (España) y correo de contacto legal@commerceiq.ai." },
+      "2": { "title": "Objeto", "content": "CommerceIQ ofrece un software SaaS para el análisis automatizado de datos empresariales, generación de dashboards, métricas e insights, incluyendo funcionalidades de inteligencia artificial." },
+      "3": { "title": "Condición de usuario", "content": "El acceso a la plataforma atribuye la condición de usuario e implica la aceptación íntegra de estos Términos." },
+      "4": { "title": "Registro y acceso", "content": "El usuario se compromete a facilitar información veraz y a mantener la confidencialidad de sus credenciales." },
+      "5": { "title": "Uso permitido", "content": "El usuario deberá utilizar la plataforma conforme a la ley, la buena fe y el presente contrato." },
+      "6": { "title": "Propiedad intelectual", "content": "Todos los derechos sobre el software y contenidos pertenecen a CommerceIQ." },
+      "7": { "title": "Datos del usuario", "content": "Los datos introducidos son responsabilidad exclusiva del usuario." },
+      "8": { "title": "Inteligencia artificial", "content": "Las funcionalidades de IA tienen carácter orientativo y no garantizan exactitud." },
+      "9": { "title": "Disponibilidad del servicio", "content": "CommerceIQ no garantiza la disponibilidad ininterrumpida del servicio." },
+      "10": { "title": "Exclusión de garantías", "content": "El servicio se presta tal cual, sin garantías explícitas o implícitas." },
+      "11": { "title": "Limitación de responsabilidad", "content": "CommerceIQ no será responsable de daños indirectos ni decisiones empresariales." },
+      "12": { "title": "Resolución", "content": "CommerceIQ podrá suspender el acceso en caso de incumplimiento." },
+      "13": { "title": "Modificaciones", "content": "CommerceIQ podrá modificar estos Términos en cualquier momento." },
+      "14": { "title": "Legislación aplicable", "content": "Estos Términos se rigen por la legislación española y europea." }
+    }
+  },
+
+  "privacy": {
+    "title": "Política de Privacidad",
+    "subtitle": "Información sobre el tratamiento de datos personales en CommerceIQ.",
+    "sections": {
+      "1": { "title": "Responsable del tratamiento", "content": "El responsable del tratamiento es CommerceIQ, con correo privacy@commerceiq.ai y domicilio en Madrid." },
+      "2": { "title": "Ámbito de aplicación", "content": "Esta Política regula el tratamiento de datos a través de la plataforma CommerceIQ." },
+      "3": { "title": "Tipos de datos tratados", "content": "Se tratan datos identificativos, empresariales, analíticos y técnicos." },
+      "4": { "title": "Finalidad del tratamiento", "content": "Los datos se utilizan para la prestación del servicio, análisis e insights." },
+      "5": { "title": "Base jurídica", "content": "La base legal es la ejecución contractual, obligaciones legales e interés legítimo." },
+      "6": { "title": "Encargado del tratamiento", "content": "CommerceIQ actúa como encargado respecto a los datos de clientes." },
+      "7": { "title": "Servicios de terceros", "content": "Se pueden usar proveedores cloud e IA como subencargados." },
+      "8": { "title": "Conservación", "content": "Los datos se conservan mientras exista relación contractual." },
+      "9": { "title": "Destinatarios", "content": "No se ceden datos salvo obligación legal." },
+      "10": { "title": "Seguridad", "content": "Se aplican medidas razonables de seguridad." },
+      "11": { "title": "Derechos", "content": "El usuario puede ejercer sus derechos escribiendo a privacy@commerceiq.ai." },
+      "12": { "title": "Exclusión de responsabilidad", "content": "CommerceIQ no responde por decisiones empresariales basadas en el software." },
+      "13": { "title": "Legislación aplicable", "content": "Esta Política se rige por la legislación española y europea." }
+    }
+  }
+}
