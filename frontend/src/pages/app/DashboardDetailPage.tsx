@@ -1,27 +1,25 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-
+import { useParams, useNavigate } from 'react-router-dom';
 import { Link } from '@/components/Link';
 import { Button } from '@/components/ui/button';
-import { getImports, getKpiResponse, getInsightsText } from '@/lib/api';
-import { BackendKpiResponse, BackendImport, KPI } from '@/lib/types';
+import { getSavedDashboard, createReport } from '@/lib/api';
+import { KPI, BackendKpiResponse } from '@/lib/types';
 import { KpiCard, ChartCard, PageLoading, AiInsightsPanel } from '@/components/shared';
-import { ArrowLeft, Sparkles, Calendar, FileText } from 'lucide-react';
+import { ArrowLeft, Sparkles, Calendar, Save, CheckCircle2 } from 'lucide-react';
 
 function mapKpis(response: BackendKpiResponse): KPI[] {
   const entries = [
-    { key: 'total_revenue',        name: 'Revenue Total',      format: 'currency' as const },
-    { key: 'order_count',          name: 'Pedidos',            format: 'number' as const },
-    { key: 'avg_order_value',      name: 'Valor Medio Pedido', format: 'currency' as const },
-    { key: 'gross_margin_pct',     name: 'Margen Bruto',       format: 'percentage' as const },
-    { key: 'repeat_purchase_rate', name: 'Tasa Recompra',      format: 'percentage' as const },
-    { key: 'return_rate',          name: 'Devoluciones',       format: 'percentage' as const },
-    { key: 'unique_customers',     name: 'Clientes Únicos',    format: 'number' as const },
-    { key: 'avg_customer_ltv',     name: 'LTV Medio',          format: 'currency' as const },
-    { key: 'avg_delivery_days',    name: 'Días Entrega',       format: 'number' as const },
-    { key: 'total_discounts',      name: 'Descuentos',         format: 'currency' as const },
+    { key: 'total_revenue',        name: 'Revenue Total',      format: 'currency'    as const },
+    { key: 'order_count',          name: 'Pedidos',            format: 'number'      as const },
+    { key: 'avg_order_value',      name: 'Valor Medio Pedido', format: 'currency'    as const },
+    { key: 'gross_margin_pct',     name: 'Margen Bruto',       format: 'percentage'  as const },
+    { key: 'repeat_purchase_rate', name: 'Tasa Recompra',      format: 'percentage'  as const },
+    { key: 'return_rate',          name: 'Devoluciones',       format: 'percentage'  as const },
+    { key: 'unique_customers',     name: 'Clientes Únicos',    format: 'number'      as const },
+    { key: 'avg_customer_ltv',     name: 'LTV Medio',          format: 'currency'    as const },
+    { key: 'total_discounts',      name: 'Descuentos',         format: 'currency'    as const },
+    { key: 'delayed_orders_pct',   name: 'Pedidos Retrasados', format: 'percentage'  as const },
   ];
-
   return entries
     .map(({ key, name, format }) => {
       const d = (response.kpis as Record<string, any>)[key];
@@ -40,44 +38,38 @@ function mapKpis(response: BackendKpiResponse): KPI[] {
 
 export function DashboardDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
 
-  const [imp, setImp]                   = useState<BackendImport | null>(null);
-  const [kpiResponse, setKpiResponse]   = useState<BackendKpiResponse | null>(null);
+  const [data, setData]                 = useState<any>(null);
   const [kpis, setKpis]                 = useState<KPI[]>([]);
   const [loading, setLoading]           = useState(true);
   const [insightsText, setInsightsText] = useState('');
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
+  const [saving, setSaving]             = useState(false);
+  const [saved, setSaved]               = useState(false);
 
   useEffect(() => {
     if (!id) return;
-    const load = async () => {
-      try {
-        const imports = await getImports();
-        const found = imports.find(i => i.id === id) || null;
-        setImp(found);
-
-        if (found?.data_date_from && found?.data_date_to) {
-          const kpiRes = await getKpiResponse('custom', found.data_date_from, found.data_date_to);
-          setKpiResponse(kpiRes);
-          setKpis(mapKpis(kpiRes));
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+    getSavedDashboard(id)
+      .then(res => {
+        setData(res);
+        setKpis(mapKpis(res as unknown as BackendKpiResponse));
+      })
+      .finally(() => setLoading(false));
   }, [id]);
 
-  const handleInsights = async () => {
+  const handleShowInsights = async () => {
     setShowInsights(true);
     if (insightsText) return;
     setInsightsLoading(true);
     try {
+      // Importar inline para no circular
+      const { getInsightsText } = await import('@/lib/api');
       const text = await getInsightsText(
-        'custom',
-        imp?.data_date_from || undefined,
-        imp?.data_date_to || undefined
+        data?.date_from && data?.date_to ? 'custom' : 'all',
+        data?.date_from || undefined,
+        data?.date_to   || undefined
       );
       setInsightsText(text);
     } catch {
@@ -87,16 +79,31 @@ export function DashboardDetailPage() {
     }
   };
 
-  if (loading) return <PageLoading message="Cargando análisis..." />;
+  const handleSaveReport = async () => {
+    if (!id || saving || saved) return;
+    setSaving(true);
+    try {
+      await createReport(id);
+      setSaved(true);
+      // Mostrar confirmación 3s y ofrecer ir a informes
+      setTimeout(() => setSaved(false), 4000);
+    } catch {
+      alert('Error al guardar el informe. Inténtalo de nuevo.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  if (!imp) return (
+  if (loading) return <PageLoading message="Cargando dashboard..." />;
+
+  if (!data) return (
     <div className="text-center py-20">
-      <p className="text-muted-foreground">Import no encontrado.</p>
-      <Link href="/app/dashboards"><Button variant="ghost" className="mt-4">Volver</Button></Link>
+      <p className="text-muted-foreground">Dashboard no encontrado.</p>
+      <Link href="/app/dashboards">
+        <Button variant="ghost" className="mt-4">Volver</Button>
+      </Link>
     </div>
   );
-
-  const hasDateRange = imp.data_date_from && imp.data_date_to;
 
   return (
     <div className="space-y-6">
@@ -109,79 +116,123 @@ export function DashboardDetailPage() {
             </Button>
           </Link>
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <FileText className="h-5 w-5 text-muted-foreground" />
-              <h1 className="text-2xl font-bold text-foreground">{imp.filename}</h1>
-            </div>
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <span className="capitalize bg-muted px-2 py-0.5 rounded text-xs">
-                {imp.detected_type}
-              </span>
-              <span>{imp.valid_rows.toLocaleString('es-ES')} filas</span>
-              {hasDateRange && (
+            <h1 className="text-2xl font-bold text-foreground">{data.name}</h1>
+            <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
+              {data.date_from && data.date_to ? (
                 <span className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
-                  {imp.data_date_from} → {imp.data_date_to}
+                  <Calendar className="h-3.5 w-3.5" />
+                  {data.date_from} → {data.date_to}
                 </span>
+              ) : (
+                <span>Todos los datos disponibles</span>
               )}
             </div>
           </div>
         </div>
 
-        <Button onClick={handleInsights} className="gap-2" variant="outline">
-          <Sparkles className="h-4 w-4" />
-          Análisis IA
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={handleShowInsights}
+            className="gap-2"
+          >
+            <Sparkles className="h-4 w-4" />
+            Ver análisis IA
+          </Button>
+
+          {saved ? (
+            <Button variant="outline" className="gap-2 text-success border-success" disabled>
+              <CheckCircle2 className="h-4 w-4" />
+              Informe guardado
+            </Button>
+          ) : (
+            <Button
+              onClick={handleSaveReport}
+              disabled={saving}
+              className="gap-2"
+            >
+              <Save className="h-4 w-4" />
+              {saving ? 'Guardando...' : 'Guardar informe'}
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Sin rango de fechas */}
-      {!hasDateRange && (
-        <div className="bg-muted/50 border rounded-lg p-6 text-center">
-          <p className="text-muted-foreground">
-            Este import no contiene datos de pedidos con fechas.
-            No se pueden calcular KPIs para este fichero.
+      {/* Banner informe guardado */}
+      {saved && (
+        <div className="flex items-center justify-between bg-success/10 border border-success/20 rounded-lg px-4 py-3">
+          <p className="text-sm text-success font-medium">
+            ✓ Informe guardado con análisis de IA incluido
           </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => navigate('/app/reports')}
+          >
+            Ver informes
+          </Button>
         </div>
       )}
 
       {/* KPI Cards */}
-      {kpis.length > 0 && (
+      {kpis.length > 0 ? (
         <section>
           <h2 className="text-lg font-semibold mb-4">Métricas</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {kpis.map(kpi => <KpiCard key={kpi.id} kpi={kpi} />)}
           </div>
         </section>
+      ) : (
+        <div className="bg-muted/50 border rounded-lg p-6 text-center">
+          <p className="text-muted-foreground text-sm">
+            No hay datos de pedidos en el rango seleccionado.
+          </p>
+        </div>
       )}
 
       {/* Gráficas */}
-      {kpiResponse && (
+      {data.charts && (
         <section className="grid lg:grid-cols-2 gap-6">
           <ChartCard
             title="Revenue en el tiempo"
             subtitle="Evolución mensual"
-            data={kpiResponse.charts.revenue_over_time}
+            data={data.charts.revenue_over_time}
             valuePrefix="€"
           />
           <ChartCard
             title="Pedidos en el tiempo"
             subtitle="Volumen de pedidos"
-            data={kpiResponse.charts.orders_over_time}
+            data={data.charts.orders_over_time}
           />
-          {kpiResponse.charts.revenue_by_channel.length > 0 && (
+          {data.charts.revenue_by_channel?.length > 0 && (
             <ChartCard
               title="Revenue por canal"
-              subtitle="Distribución de ventas por canal"
-              data={kpiResponse.charts.revenue_by_channel}
+              data={data.charts.revenue_by_channel}
               type="bar"
               valuePrefix="€"
             />
           )}
-          {kpiResponse.charts.top_products_revenue.length > 0 && (
+          {data.charts.top_products_revenue?.length > 0 && (
             <ChartCard
               title="Top productos"
               subtitle="Por revenue generado"
-              data={kpiResponse.charts.top_products_revenue}
+              data={data.charts.top_products_revenue}
+              type="bar"
+              valuePrefix="€"
+            />
+          )}
+          {data.charts.revenue_by_category?.length > 0 && (
+            <ChartCard
+              title="Revenue por categoría"
+              data={data.charts.revenue_by_category}
+              type="bar"
+              valuePrefix="€"
+            />
+          )}
+          {data.charts.revenue_by_country?.length > 0 && (
+            <ChartCard
+              title="Top países"
+              data={data.charts.revenue_by_country}
               type="bar"
               valuePrefix="€"
             />

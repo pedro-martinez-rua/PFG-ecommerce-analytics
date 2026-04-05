@@ -290,6 +290,34 @@ def validate_dataframe(
                     "message": "Importe total ausente — KPIs financieros limitados para esta fila"
                 })
 
+        # Validaciones de negocio para order_lines
+        if upload_type == "order_lines":
+            has_product = bool(row.get("product_name")) or bool(row.get("sku"))
+            has_qty = row.get("quantity") is not None and str(row.get("quantity")).strip() not in ("", "nan", "None")
+            has_unit_price = row.get("unit_price") is not None and str(row.get("unit_price")).strip() not in ("", "nan", "None")
+            has_line_total = row.get("line_total") is not None and str(row.get("line_total")).strip() not in ("", "nan", "None")
+            has_order_date = row.get("order_date") is not None and str(row.get("order_date")).strip() not in ("", "nan", "None")
+
+            if not has_product and not has_qty and not has_unit_price:
+                row_errors.append({
+                    "field": "product_name / sku / quantity / unit_price",
+                    "error_type": "missing_line_structure",
+                    "value": None,
+                    "message": "La fila no contiene estructura mínima de línea de pedido"
+                })
+
+            if has_qty and has_unit_price and not has_line_total:
+                warnings.append({
+                    "field": "line_total",
+                    "message": "Total de línea ausente — se derivará a partir de cantidad y precio unitario"
+                })
+
+            if not has_order_date:
+                warnings.append({
+                    "field": "order_date",
+                    "message": "Fecha de pedido ausente — se podrá cargar la línea pero se limitarán KPIs temporales"
+                })
+
         # Clasificar
         if not row_errors:
             status = RowStatus.VALID

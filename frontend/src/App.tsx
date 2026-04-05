@@ -25,6 +25,8 @@ import {
   DashboardDetailPage,
   ReportsPage,
   ProfilePage,
+  ImportsPage,
+  ReportDetailPage,
 } from '@/pages/app';
 
 import { TermsPage } from '@/pages/public/TermsPage';
@@ -239,7 +241,28 @@ export default function App() {
           </RequireAuth>
         }
       />
-      
+
+      <Route
+        path="/app/imports"
+        element={
+          <RequireAuth>
+            <AppLayout>
+              <ImportsPage />
+            </AppLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/app/reports/:id"
+        element={
+          <RequireAuth>
+            <AppLayout>
+              <ReportDetailPage />
+            </AppLayout>
+          </RequireAuth>
+        }
+      />
+
       {/* 404 real */}
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
