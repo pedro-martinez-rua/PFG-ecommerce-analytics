@@ -210,7 +210,6 @@ export default function App() {
         }
       />
 
-      {/* Si quieres mantener accesos "internos" a contenidos públicos dentro de /app */}
       <Route
         path="/app/tutorials"
         element={

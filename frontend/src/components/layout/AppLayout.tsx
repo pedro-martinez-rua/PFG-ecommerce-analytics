@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from '@/components/Link';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { Footer } from './Footer';
+import { AppFooter } from './FooterIn';
 
 import {
   BarChart3,
@@ -197,7 +197,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           <div className="container py-6 lg:py-8 max-w-6xl">{children}</div>
         </main>
       </div>
-      <Footer />
+      <AppFooter/>
     </div>
   );
 }
