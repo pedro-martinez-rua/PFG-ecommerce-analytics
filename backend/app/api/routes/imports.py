@@ -1,26 +1,40 @@
 from collections import Counter
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Request
-from sqlalchemy.orm import Session
+
+import pandas as pd
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Request, Body
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from app.db.database import get_db
 from app.core.dependencies import get_current_user
-from app.models.user import User
+from app.db.database import get_db
 from app.models.import_record import Import
 from app.models.import_sheet import ImportSheet
 from app.models.raw_upload import RawUpload
-from app.schemas.import_schema import ImportResponse
-from app.pipelines.import_orchestrator import run_import
-from app.services.kpi_service import invalidate_kpi_cache
+from app.models.user import User
+from app.pipelines.detector import detect_type_with_confidence
 from app.pipelines.explainer import ERROR_CATALOG, WARNING_CATALOG, build_import_explanation
+from app.pipelines.import_orchestrator import run_import, reprocess_import_with_mapping
+from app.pipelines.mapper import infer_mapping_with_confidence
+from app.pipelines.profiler import dataframe_from_raw_rows, profile_dataframe
+from app.schemas.import_schema import ImportResponse
+from app.schemas.mapping_schema import MappingApplyRequest, MappingApplyResponse, MappingSuggestionResponse
+from app.services.kpi_service import invalidate_kpi_cache
 
-router  = APIRouter(prefix="/api/imports", tags=["imports"])
+router = APIRouter(prefix="/api/imports", tags=["imports"])
 limiter = Limiter(key_func=get_remote_address)
 
 ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
-MAX_FILE_SIZE      = 100 * 1024 * 1024
+MAX_FILE_SIZE = 100 * 1024 * 1024
+
+
+def _serialize_value(v):
+    if v is None:
+        return None
+    if hasattr(v, "isoformat"):
+        return v.isoformat()
+    return v
 
 
 def _issue_from_validation_error(err: dict) -> dict:
@@ -34,10 +48,30 @@ def _issue_from_validation_error(err: dict) -> dict:
     }
 
 
+def _load_sheet_raw_dataframe(db: Session, tenant_id: str, import_id: str, sheet_id) -> tuple[pd.DataFrame, dict]:
+    raw_rows = (
+        db.query(RawUpload)
+        .filter_by(import_id=import_id, tenant_id=tenant_id, sheet_id=sheet_id)
+        .order_by(RawUpload.row_index.asc())
+        .all()
+    )
+    data = [dict(r.raw_data or {}) for r in raw_rows]
+    df = dataframe_from_raw_rows(data)
+    profile = profile_dataframe(df)
+    return df, profile
+
+
 def _build_import_diagnosis_payload(db: Session, tenant_id: str, record: Import) -> dict:
-    sheets = db.query(ImportSheet).filter_by(import_id=record.id, tenant_id=tenant_id).order_by(ImportSheet.created_at.asc()).all()
+    sheets = (
+        db.query(ImportSheet)
+        .filter_by(import_id=record.id, tenant_id=tenant_id)
+        .order_by(ImportSheet.created_at.asc())
+        .all()
+    )
     sheet_payloads = []
+
     for sheet in sheets:
+        _, profile = _load_sheet_raw_dataframe(db, tenant_id, record.id, sheet.id)
         raw_rows = db.query(RawUpload).filter_by(import_id=record.id, tenant_id=tenant_id, sheet_id=sheet.id).all()
         error_counter: Counter[str] = Counter()
         for raw in raw_rows:
@@ -51,7 +85,7 @@ def _build_import_diagnosis_payload(db: Session, tenant_id: str, record: Import)
             top_errors.append(item)
 
         top_warnings = []
-        for warning in getattr(sheet, "file_warnings", []) or []:
+        for warning in profile.get("warnings", []):
             meta = WARNING_CATALOG["parser_warning"]
             top_warnings.append({
                 "code": "parser_warning",
@@ -64,21 +98,22 @@ def _build_import_diagnosis_payload(db: Session, tenant_id: str, record: Import)
         main_reason = None
         main_reason_code = None
         user_message = None
-        diagnosis = None
         suggestions = []
-        if top_errors:
+        if record.status == "needs_review":
+            main_reason = "Revisión manual necesaria"
+            main_reason_code = "needs_review"
+            user_message = "El archivo se ha leído, pero faltan columnas mínimas o la detección automática no es lo bastante fiable para procesarlo con seguridad."
+            suggestions.append("Abre la revisión de columnas y confirma el mapping manual.")
+        elif top_errors:
             main_reason = top_errors[0]["title"]
             main_reason_code = top_errors[0]["code"]
             user_message = top_errors[0]["description"]
-            diagnosis = top_errors[0]["description"]
             if top_errors[0].get("suggestion"):
                 suggestions.append(top_errors[0]["suggestion"])
-        elif (sheet.detected_type or "") == "unknown":
-            main_reason = "Tipo de archivo no reconocido"
-            main_reason_code = "unknown_type"
-            user_message = "No se ha podido identificar una estructura válida para esta hoja."
-            diagnosis = user_message
-            suggestions.append("Revisa la cabecera del archivo y usa nombres de columna más reconocibles.")
+        elif top_warnings:
+            main_reason = top_warnings[0]["title"]
+            main_reason_code = top_warnings[0]["code"]
+            user_message = top_warnings[0]["description"]
 
         sheet_payloads.append({
             "sheet_name": sheet.sheet_name,
@@ -89,9 +124,9 @@ def _build_import_diagnosis_payload(db: Session, tenant_id: str, record: Import)
             "skipped_rows": sheet.skipped_rows or 0,
             "top_errors": top_errors,
             "top_warnings": top_warnings,
-            "file_warnings": [],
-            "columns_found": None,
-            "diagnosis": diagnosis,
+            "file_warnings": profile.get("warnings", []),
+            "columns_found": profile.get("columns", []),
+            "diagnosis": user_message,
             "main_reason_code": main_reason_code,
             "main_reason": main_reason,
             "user_message": user_message,
@@ -110,12 +145,12 @@ def _build_import_diagnosis_payload(db: Session, tenant_id: str, record: Import)
         "valid_rows": record.valid_rows or 0,
         "invalid_rows": record.invalid_rows or 0,
         "skipped_rows": record.skipped_rows or 0,
-        "main_reason_code": explanation.get("main_reason_code"),
-        "main_reason": explanation.get("main_reason"),
-        "user_message": explanation.get("user_message"),
+        "main_reason_code": explanation.get("main_reason_code") or (sheet_payloads[0].get("main_reason_code") if sheet_payloads else None),
+        "main_reason": explanation.get("main_reason") or (sheet_payloads[0].get("main_reason") if sheet_payloads else None),
+        "user_message": explanation.get("user_message") or (sheet_payloads[0].get("user_message") if sheet_payloads else None),
         "top_errors": explanation.get("top_errors", []),
         "top_warnings": explanation.get("top_warnings", []),
-        "suggestions": explanation.get("suggestions", []),
+        "suggestions": explanation.get("suggestions", []) or ["Revisa la preview raw y confirma manualmente las columnas si el sistema no acierta."],
         "sheets": sheet_payloads,
     }
 
@@ -126,168 +161,172 @@ async def create_import(
     request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    """Sube y procesa un fichero CSV o XLSX."""
     filename_lower = file.filename.lower()
     if not any(filename_lower.endswith(ext) for ext in ALLOWED_EXTENSIONS):
-        raise HTTPException(status_code=400,
-            detail=f"Formato no soportado. Se aceptan: {', '.join(ALLOWED_EXTENSIONS)}")
+        raise HTTPException(status_code=400, detail=f"Formato no soportado. Se aceptan: {', '.join(ALLOWED_EXTENSIONS)}")
 
     content = await file.read()
-
     if len(content) == 0:
         raise HTTPException(status_code=400, detail="El fichero está vacío")
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400,
-            detail=f"El fichero supera el límite de {MAX_FILE_SIZE // (1024*1024)} MB")
+        raise HTTPException(status_code=400, detail=f"El fichero supera el límite de {MAX_FILE_SIZE // (1024*1024)} MB")
 
-    result = run_import(
-        db=db,
-        tenant_id=str(current_user.tenant_id),
-        filename=file.filename,
-        file_content=content
-    )
+    result = run_import(db=db, tenant_id=str(current_user.tenant_id), filename=file.filename, file_content=content)
     return ImportResponse(**result)
 
 
 @router.get("/available-range")
-def get_available_range(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Rango de fechas disponible en todos los datos del tenant."""
+def get_available_range(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = db.execute(text("""
-        SELECT
-            MIN(order_date) AS date_from,
-            MAX(order_date) AS date_to,
-            COUNT(*)        AS total_orders,
-            COUNT(DISTINCT DATE_TRUNC('month', order_date)) AS months_with_data
-        FROM orders
-        WHERE tenant_id = :tenant_id
+        SELECT MIN(order_date) AS date_from, MAX(order_date) AS date_to, COUNT(*) AS total_orders,
+               COUNT(DISTINCT DATE_TRUNC('month', order_date)) AS months_with_data
+        FROM orders WHERE tenant_id = :tenant_id
     """), {"tenant_id": str(current_user.tenant_id)})
-
     row = result.fetchone()
     if not row or not row[0]:
-        return {"has_data": False, "date_from": None,
-                "date_to": None, "total_orders": 0, "months_with_data": 0}
-    return {
-        "has_data":         True,
-        "date_from":        row[0].isoformat(),
-        "date_to":          row[1].isoformat(),
-        "total_orders":     row[2],
-        "months_with_data": row[3]
-    }
+        return {"has_data": False, "date_from": None, "date_to": None, "total_orders": 0, "months_with_data": 0}
+    return {"has_data": True, "date_from": row[0].isoformat(), "date_to": row[1].isoformat(), "total_orders": row[2], "months_with_data": row[3]}
 
 
 @router.get("/")
-def list_imports(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Lista imports del tenant con estadísticas y rango de fechas de sus datos."""
+def list_imports(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = db.execute(text("""
-        SELECT
-            i.id::text,
-            i.filename,
-            i.file_format,
-            i.status,
-            i.detected_type,
-            i.total_rows,
-            i.valid_rows,
-            i.invalid_rows,
-            i.file_size_bytes,
-            i.created_at,
-            i.completed_at,
-            MIN(o.order_date) AS data_date_from,
-            MAX(o.order_date) AS data_date_to,
-            COUNT(o.id)       AS orders_loaded,
-            COUNT(ol.id)      AS lines_loaded
+        WITH orders_agg AS (
+            SELECT import_id, MIN(order_date) AS data_date_from, MAX(order_date) AS data_date_to, COUNT(*) AS orders_loaded
+            FROM orders WHERE tenant_id = :tenant_id GROUP BY import_id
+        ),
+        lines_agg AS (
+            SELECT import_id, COUNT(*) AS lines_loaded
+            FROM order_lines WHERE tenant_id = :tenant_id GROUP BY import_id
+        )
+        SELECT i.id::text, i.filename, i.file_format, i.status, i.detected_type,
+               i.total_rows, i.valid_rows, i.invalid_rows, i.file_size_bytes, i.created_at, i.completed_at,
+               oa.data_date_from, oa.data_date_to,
+               COALESCE(oa.orders_loaded, 0) AS orders_loaded,
+               COALESCE(la.lines_loaded, 0) AS lines_loaded
         FROM imports i
-        LEFT JOIN orders o
-               ON o.import_id = i.id
-              AND o.tenant_id = i.tenant_id
-        LEFT JOIN order_lines ol
-               ON ol.import_id = i.id
-              AND ol.tenant_id = i.tenant_id
+        LEFT JOIN orders_agg oa ON oa.import_id = i.id
+        LEFT JOIN lines_agg la ON la.import_id = i.id
         WHERE i.tenant_id = :tenant_id
-        GROUP BY i.id, i.filename, i.file_format, i.status, i.detected_type,
-                 i.total_rows, i.valid_rows, i.invalid_rows,
-                 i.file_size_bytes, i.created_at, i.completed_at
         ORDER BY i.created_at DESC
     """), {"tenant_id": str(current_user.tenant_id)})
 
-    rows = result.fetchall()
-    keys = list(result.keys())
-
-    def serialize(v):
-        if v is None:
-            return None
-        if hasattr(v, 'isoformat'):
-            return v.isoformat()
-        if hasattr(v, 'hex'):
-            return str(v)
-        return v
-
-    return [{k: serialize(v) for k, v in zip(keys, row)} for row in rows]
+    items = []
+    for row in result.mappings().all():
+        item = {k: _serialize_value(v) for k, v in row.items()}
+        if item["status"] == "needs_review":
+            item["main_reason"] = "Revisión manual necesaria"
+            item["user_message"] = "El archivo se ha leído, pero necesita confirmación manual de columnas."
+            item["has_warnings"] = True
+        elif (item.get("invalid_rows") or 0) > 0:
+            item["main_reason"] = "Import completado con incidencias"
+            item["user_message"] = "Hay filas inválidas o omitidas."
+            item["has_warnings"] = True
+        else:
+            item["main_reason"] = None
+            item["user_message"] = None
+            item["has_warnings"] = False
+        items.append(item)
+    return items
 
 
 @router.get("/{import_id}")
-def get_import(
-    import_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Detalle de un import."""
-    record = db.query(Import).filter_by(
-        id=import_id,
-        tenant_id=current_user.tenant_id
-    ).first()
+def get_import(import_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Import no encontrado")
     return record
 
 
 @router.get("/{import_id}/diagnosis")
-def get_import_diagnosis(
-    import_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Diagnóstico explicable de un import, orientado a frontend."""
-    record = db.query(Import).filter_by(
-        id=import_id,
-        tenant_id=current_user.tenant_id
-    ).first()
+def get_import_diagnosis(import_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Import no encontrado")
+    return _build_import_diagnosis_payload(db, str(current_user.tenant_id), record)
+
+
+@router.get("/{import_id}/mapping-suggestion", response_model=MappingSuggestionResponse)
+def get_mapping_suggestion(import_id: str, sheet_name: str | None = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Import no encontrado")
 
-    return _build_import_diagnosis_payload(db, current_user.tenant_id, record)
+    query = db.query(ImportSheet).filter_by(import_id=record.id, tenant_id=current_user.tenant_id)
+    if sheet_name:
+        query = query.filter_by(sheet_name=sheet_name)
+    sheet = query.order_by(ImportSheet.created_at.asc()).first()
+    if not sheet:
+        raise HTTPException(status_code=404, detail="Hoja no encontrada")
+
+    raw_df, profile = _load_sheet_raw_dataframe(db, str(current_user.tenant_id), record.id, sheet.id)
+    upload_type, confidence = detect_type_with_confidence(profile.get("columns", []), raw_df)
+    suggestions = infer_mapping_with_confidence(profile.get("columns", []), raw_df)
+    required_fields = ["order_date"] if upload_type.value in ("orders", "mixed") else (["product_name"] if upload_type.value == "products" else [])
+    mapped_fields = {info.get("canonical") for info in suggestions.values() if info.get("canonical")}
+    missing = [field for field in required_fields if field not in mapped_fields]
+
+    return {
+        "import_id": str(record.id),
+        "sheet_name": sheet.sheet_name,
+        "upload_type": upload_type.value,
+        "confidence": round(confidence, 2),
+        "requires_review": bool(missing or upload_type.value == "unknown" or confidence < 0.3),
+        "required_fields_missing": missing,
+        "raw_columns": profile.get("columns", []),
+        "profiler_warnings": profile.get("warnings", []),
+        "suggestions": [
+            {
+                "source_column": col,
+                "canonical_field": info.get("canonical"),
+                "confidence": info.get("confidence", 0.0),
+                "method": info.get("method", "unresolved"),
+                "inferred_type": profile.get("inferred_types", {}).get(col),
+                "null_ratio": profile.get("null_ratio", {}).get(col),
+            }
+            for col, info in suggestions.items()
+        ],
+    }
+
+
+@router.post("/{import_id}/mapping", response_model=MappingApplyResponse)
+def apply_import_mapping(import_id: str, payload: MappingApplyRequest = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    mapping = {item.source_column: item.canonical_field for item in payload.assignments}
+    try:
+        result = reprocess_import_with_mapping(
+            db=db,
+            tenant_id=str(current_user.tenant_id),
+            import_id=import_id,
+            sheet_name=payload.sheet_name,
+            upload_type=payload.upload_type,
+            mapping=mapping,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    first_sheet = result["sheets"][0] if result.get("sheets") else {}
+    return {
+        "import_id": result["import_id"],
+        "sheet_name": first_sheet.get("sheet_name") or payload.sheet_name or "sheet",
+        "status": result["status"],
+        "valid_rows": first_sheet.get("valid_rows", 0),
+        "invalid_rows": first_sheet.get("invalid_rows", 0),
+        "skipped_rows": first_sheet.get("skipped_rows", 0),
+        "detected_type": first_sheet.get("detected_type") or result.get("detected_type") or "unknown",
+    }
+
 
 @router.get("/{import_id}/impact")
-def get_import_impact(
-    import_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Devuelve qué dashboards se verían afectados si se elimina este import.
-    Para cada dashboard indica si quedaría vacío (se eliminaría) o incompleto.
-    """
+def get_import_impact(import_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from app.models.dashboard import Dashboard
 
-    record = db.query(Import).filter_by(
-        id=import_id,
-        tenant_id=current_user.tenant_id
-    ).first()
+    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Import no encontrado")
 
-    # Buscar todos los dashboards del tenant que incluyen este import
-    dashboards = db.query(Dashboard).filter_by(
-        tenant_id=current_user.tenant_id
-    ).all()
-
+    dashboards = db.query(Dashboard).filter_by(tenant_id=current_user.tenant_id).all()
     affected = []
     for d in dashboards:
         ids = d.import_ids or []
@@ -295,43 +334,24 @@ def get_import_impact(
             continue
         remaining = [i for i in ids if i != import_id]
         affected.append({
-            "dashboard_id":   str(d.id),
+            "dashboard_id": str(d.id),
             "dashboard_name": d.name,
-            "total_imports":  len(ids),
-            "remaining":      len(remaining),
+            "total_imports": len(ids),
+            "remaining": len(remaining),
             "will_be_deleted": len(remaining) == 0,
         })
+    return {"import_id": import_id, "filename": record.filename, "affected": affected, "has_impact": len(affected) > 0}
 
-    return {
-        "import_id":   import_id,
-        "filename":    record.filename,
-        "affected":    affected,
-        "has_impact":  len(affected) > 0,
-    }
 
 @router.delete("/{import_id}", status_code=200)
-def delete_import(
-    import_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Elimina un import y sus datos.
-    - Dashboards que quedan sin imports → se eliminan automáticamente.
-    - Los informes guardados asociados a esos dashboards NO se eliminan.
-    """
+def delete_import(import_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from app.models.dashboard import Dashboard
 
-    record = db.query(Import).filter_by(
-        id=import_id,
-        tenant_id=current_user.tenant_id
-    ).first()
+    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Import no encontrado")
 
     tid = str(current_user.tenant_id)
-
-    # 1 — Gestionar dashboards afectados ANTES de borrar datos
     dashboards = db.query(Dashboard).filter_by(tenant_id=current_user.tenant_id).all()
     dashboards_to_delete = []
 
@@ -343,159 +363,57 @@ def delete_import(
         if len(remaining) == 0:
             dashboards_to_delete.append(str(d.id))
         else:
-            # Actualizar import_ids del dashboard
-            db.execute(text("""
-                UPDATE dashboards
-                SET import_ids = :ids::jsonb
-                WHERE id = :did AND tenant_id = :tid
-            """), {
-                "ids": str(remaining).replace("'", '"'),
-                "did": str(d.id),
-                "tid": tid
+            db.execute(text("""UPDATE dashboards SET import_ids = :ids::jsonb WHERE id = :did AND tenant_id = :tid"""), {
+                "ids": str(remaining).replace("'", '"'), "did": str(d.id), "tid": tid
             })
 
-    # Eliminar dashboards vacíos (los informes quedan huérfanos pero NO se borran)
     for did in dashboards_to_delete:
-        # Desvincular informes antes de borrar
-        db.execute(text("""
-            UPDATE reports SET dashboard_id = NULL
-            WHERE dashboard_id = :did
-        """), {"did": did})
+        db.execute(text("""UPDATE reports SET dashboard_id = NULL WHERE dashboard_id = :did"""), {"did": did})
+        db.execute(text("DELETE FROM dashboards WHERE id = :did AND tenant_id = :tid"), {"did": did, "tid": tid})
 
-        db.execute(text(
-            "DELETE FROM dashboards WHERE id = :did AND tenant_id = :tid"
-        ), {"did": did, "tid": tid})
-
-    # 2 — Eliminar datos del import en cascada
-    for table in ["order_lines", "orders", "customers", "products",
-                  "field_mappings", "raw_uploads", "import_sheets"]:
-        db.execute(text(f"""
-            DELETE FROM {table}
-            WHERE tenant_id = :tid AND import_id = :iid
-        """), {"tid": tid, "iid": import_id})
+    for table in ["order_lines", "orders", "customers", "products", "field_mappings", "raw_uploads", "import_sheets"]:
+        db.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid AND import_id = :iid"), {"tid": tid, "iid": import_id})
 
     invalidate_kpi_cache(db, tid)
-
-    # 3 — Eliminar el import
-    db.execute(text("""
-        DELETE FROM imports WHERE id = :iid AND tenant_id = :tid
-    """), {"iid": import_id, "tid": tid})
-
+    db.execute(text("DELETE FROM imports WHERE id = :iid AND tenant_id = :tid"), {"iid": import_id, "tid": tid})
     db.commit()
+    return {"message": "Import eliminado correctamente", "dashboards_deleted": dashboards_to_delete}
 
-    return {
-        "message": "Import eliminado correctamente",
-        "dashboards_deleted": dashboards_to_delete,
-    }
-    
+
 @router.get("/{import_id}/preview")
-def preview_import(
-    import_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Devuelve las primeras 10 filas del import según su tipo detectado.
-    Busca en la tabla correspondiente (orders, order_lines, products, customers).
-    """
-    record = db.query(Import).filter_by(
-        id=import_id,
-        tenant_id=current_user.tenant_id
-    ).first()
-
+def preview_import(import_id: str, mode: str = "raw", db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Import no encontrado")
 
-    detected = (record.detected_type or "").lower()
-    tenant_id = str(current_user.tenant_id)
+    if mode == "normalized":
+        detected = (record.detected_type or "").lower()
+        tenant_id = str(current_user.tenant_id)
+        if detected in ("orders", "mixed"):
+            result = db.execute(text("""SELECT id::text AS id, external_id, order_date::text, total_amount, net_amount, discount_amount, status, channel, shipping_country, currency FROM orders WHERE tenant_id = :tenant_id AND import_id = :import_id ORDER BY order_date NULLS LAST LIMIT 10"""), {"tenant_id": tenant_id, "import_id": import_id})
+        elif detected == "order_lines":
+            result = db.execute(text("""SELECT id::text AS id, external_id, product_name, sku, category, quantity, unit_price, unit_cost, line_total FROM order_lines WHERE tenant_id = :tenant_id AND import_id = :import_id LIMIT 10"""), {"tenant_id": tenant_id, "import_id": import_id})
+        elif detected == "products":
+            result = db.execute(text("""SELECT id::text AS id, external_id, name, sku, category, brand, unit_price, unit_cost FROM products WHERE tenant_id = :tenant_id AND import_id = :import_id LIMIT 10"""), {"tenant_id": tenant_id, "import_id": import_id})
+        else:
+            result = db.execute(text("""SELECT id::text AS id, external_id, email, full_name, country, created_at::text FROM customers WHERE tenant_id = :tenant_id AND import_id = :import_id LIMIT 10"""), {"tenant_id": tenant_id, "import_id": import_id})
+        rows = result.fetchall()
+        keys = list(result.keys())
+        return {"import_id": import_id, "mode": "normalized", "detected_type": detected, "row_count": len(rows), "columns": keys, "rows": [dict(zip(keys, row)) for row in rows]}
 
-    # Seleccionar tabla según tipo detectado
-    if detected in ("orders", "mixed"):
-        result = db.execute(text("""
-            SELECT
-                id::text AS id,
-                external_id,
-                order_date::text,
-                total_amount,
-                net_amount,
-                discount_amount,
-                status,
-                channel,
-                shipping_country,
-                currency
-            FROM orders
-            WHERE tenant_id = :tenant_id
-              AND import_id = :import_id
-            ORDER BY order_date
-            LIMIT 10
-        """), {"tenant_id": tenant_id, "import_id": import_id})
+    sheet = db.query(ImportSheet).filter_by(import_id=record.id, tenant_id=current_user.tenant_id).order_by(ImportSheet.created_at.asc()).first()
+    if not sheet:
+        return {"import_id": import_id, "mode": "raw", "detected_type": record.detected_type or "unknown", "row_count": 0, "columns": [], "rows": []}
 
-    elif detected == "order_lines":
-        result = db.execute(text("""
-            SELECT
-                id::text AS id,
-                external_id,
-                product_name,
-                sku,
-                category,
-                quantity,
-                unit_price,
-                unit_cost,
-                line_total
-            FROM order_lines
-            WHERE tenant_id = :tenant_id
-              AND import_id = :import_id
-            LIMIT 10
-        """), {"tenant_id": tenant_id, "import_id": import_id})
-
-    elif detected == "products":
-        result = db.execute(text("""
-            SELECT
-                id::text AS id,
-                external_id,
-                name,
-                sku,
-                category,
-                brand,
-                unit_price,
-                unit_cost
-            FROM products
-            WHERE tenant_id = :tenant_id
-              AND import_id = :import_id
-            LIMIT 10
-        """), {"tenant_id": tenant_id, "import_id": import_id})
-
-    elif detected == "customers":
-        result = db.execute(text("""
-            SELECT
-                id::text AS id,
-                external_id,
-                email,
-                full_name,
-                country,
-                created_at::text
-            FROM customers
-            WHERE tenant_id = :tenant_id
-              AND import_id = :import_id
-            LIMIT 10
-        """), {"tenant_id": tenant_id, "import_id": import_id})
-
-    else:
-        # Tipo desconocido — intentar con orders
-        result = db.execute(text("""
-            SELECT id::text, external_id, order_date::text, total_amount
-            FROM orders
-            WHERE tenant_id = :tenant_id AND import_id = :import_id
-            LIMIT 10
-        """), {"tenant_id": tenant_id, "import_id": import_id})
-
-    rows = result.fetchall()
-    keys = list(result.keys())
-
+    raw_df, profile = _load_sheet_raw_dataframe(db, str(current_user.tenant_id), record.id, sheet.id)
+    sample_df = raw_df.head(10)
+    raw_rows = sample_df.where(pd.notna(sample_df), None).to_dict(orient="records") if not sample_df.empty else []
     return {
-        "import_id":    import_id,
-        "detected_type": detected,
-        "row_count":    len(rows),
-        "columns":      keys,
-        "rows":         [dict(zip(keys, row)) for row in rows],
+        "import_id": import_id,
+        "mode": "raw",
+        "detected_type": record.detected_type or "unknown",
+        "row_count": len(raw_rows),
+        "columns": profile.get("columns", []),
+        "rows": raw_rows,
+        "warnings": profile.get("warnings", []),
     }

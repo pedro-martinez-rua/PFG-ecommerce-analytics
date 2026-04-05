@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Link } from '@/components/Link';
 import { Button } from '@/components/ui/button';
-import { getSavedDashboard, createReport } from '@/lib/api';
+import { getSavedDashboard, createReport, getDashboardInsights } from '@/lib/api';
 import { KPI, BackendKpiResponse } from '@/lib/types';
 import { KpiCard, ChartCard, PageLoading, AiInsightsPanel } from '@/components/shared';
 import { ArrowLeft, Sparkles, Calendar, Save, CheckCircle2 } from 'lucide-react';
@@ -60,17 +60,14 @@ export function DashboardDetailPage() {
   }, [id]);
 
   const handleShowInsights = async () => {
+    if (!id) return;
+
     setShowInsights(true);
     if (insightsText) return;
+
     setInsightsLoading(true);
     try {
-      // Importar inline para no circular
-      const { getInsightsText } = await import('@/lib/api');
-      const text = await getInsightsText(
-        data?.date_from && data?.date_to ? 'custom' : 'all',
-        data?.date_from || undefined,
-        data?.date_to   || undefined
-      );
+      const text = await getDashboardInsights(id);
       setInsightsText(text);
     } catch {
       setInsightsText('No se pudieron cargar los insights.');
