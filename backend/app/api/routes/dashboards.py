@@ -10,6 +10,7 @@ from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.models.dashboard import Dashboard
 from app.services.kpi_service import compute_kpis
+from app.services.groq_service import generate_insights
 
 router = APIRouter(prefix="/api/dashboards", tags=["dashboards"])
 
@@ -73,9 +74,48 @@ def get_dashboard(
         period="custom" if dashboard.date_from else "all",
         date_from=str(dashboard.date_from) if dashboard.date_from else None,
         date_to=str(dashboard.date_to) if dashboard.date_to else None,
+        import_ids=[str(i) for i in (dashboard.import_ids or [])],
     )
     return {**_serialize(dashboard), **kpi_data}
 
+@router.get("/{dashboard_id}/insights")
+def get_dashboard_insights(
+    dashboard_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    dashboard = db.query(Dashboard).filter_by(
+        id=dashboard_id,
+        tenant_id=current_user.tenant_id
+    ).first()
+    if not dashboard:
+        raise HTTPException(status_code=404, detail="Dashboard no encontrado")
+
+    kpi_data = compute_kpis(
+        db=db,
+        tenant_id=str(current_user.tenant_id),
+        period="custom" if dashboard.date_from else "all",
+        date_from=str(dashboard.date_from) if dashboard.date_from else None,
+        date_to=str(dashboard.date_to) if dashboard.date_to else None,
+        import_ids=[str(i) for i in (dashboard.import_ids or [])],
+    )
+
+    insights = generate_insights(
+        kpis=kpi_data["kpis"],
+        coverage=kpi_data["data_coverage"],
+        period=kpi_data["period"],
+        charts=kpi_data["charts"],
+    )
+
+    return {
+        "dashboard_id": dashboard_id,
+        "period": kpi_data["period"],
+        "date_from": kpi_data["date_from"],
+        "date_to": kpi_data["date_to"],
+        "import_ids": kpi_data.get("import_ids", []),
+        "insights": insights,
+        "data_coverage": kpi_data["data_coverage"],
+    }
 
 @router.delete("/{dashboard_id}", status_code=204)
 def delete_dashboard(

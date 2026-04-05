@@ -1,7 +1,8 @@
 import {
   KPI, Dataset,
   BackendKpiResponse, BackendImport, AvailableRange,
-  PeriodOption, SavedDashboard, SavedReport, UploadImportResult, ImportDiagnosis
+  PeriodOption, SavedDashboard, SavedReport, UploadImportResult, ImportDiagnosis,
+  ImportPreviewResponse, MappingSuggestionResponse, MappingApplyResponse
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -245,6 +246,11 @@ export async function getSavedDashboard(id: string): Promise<SavedDashboard & Ba
   return apiFetch<SavedDashboard & BackendKpiResponse>(`/api/dashboards/${id}`);
 }
 
+export async function getDashboardInsights(id: string): Promise<string> {
+  const res = await apiFetch<{ insights: string }>(`/api/dashboards/${id}/insights`);
+  return res.insights;
+}
+
 export async function deleteSavedDashboard(id: string): Promise<void> {
   await apiFetch(`/api/dashboards/${id}`, { method: 'DELETE' });
 }
@@ -275,14 +281,23 @@ export async function getImportDiagnosis(importId: string): Promise<ImportDiagno
   return apiFetch<ImportDiagnosis>(`/api/imports/${importId}/diagnosis`);
 }
 
-export async function getImportPreview(importId: string): Promise<{
-  import_id: string;
-  detected_type: string;
-  row_count: number;
-  columns: string[];
-  rows: Record<string, any>[];
-}> {
-  return apiFetch(`/api/imports/${importId}/preview`);
+export async function getImportPreview(importId: string, mode: "raw" | "normalized" = "raw"): Promise<ImportPreviewResponse> {
+  return apiFetch(`/api/imports/${importId}/preview?mode=${mode}`);
+}
+
+export async function getImportMappingSuggestion(importId: string): Promise<MappingSuggestionResponse> {
+  return apiFetch<MappingSuggestionResponse>(`/api/imports/${importId}/mapping-suggestion`);
+}
+
+export async function applyImportMapping(importId: string, payload: {
+  sheet_name?: string;
+  upload_type?: string;
+  assignments: { source_column: string; canonical_field?: string | null }[];
+}): Promise<MappingApplyResponse> {
+  return apiFetch<MappingApplyResponse>(`/api/imports/${importId}/mapping`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function getImportImpact(importId: string): Promise<{
