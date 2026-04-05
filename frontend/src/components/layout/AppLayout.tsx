@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { Link } from '@/components/Link';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
+import { Footer } from './Footer';
+
 import {
   BarChart3,
   LayoutDashboard,
@@ -21,7 +23,9 @@ import {
   Menu,
   X,
   Building2,
+  Database,
 } from 'lucide-react';
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -57,6 +61,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { type: 'link', href: '/app/contact', labelKey: 'app.sidebar.contact', icon: Mail },
     { type: 'divider' },
     { type: 'link', href: '/app/profile', labelKey: 'app.sidebar.profile', icon: User },
+    { type: 'link', href: '/app/imports', labelKey: 'app.sidebar.imports', icon: Database },
   ];
 
   useEffect(() => {
@@ -192,6 +197,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           <div className="container py-6 lg:py-8 max-w-6xl">{children}</div>
         </main>
       </div>
+      <Footer />
     </div>
   );
 }

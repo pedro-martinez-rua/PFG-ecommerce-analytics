@@ -1,7 +1,7 @@
 import {
   KPI, Dataset,
   BackendKpiResponse, BackendImport, AvailableRange,
-  PeriodOption
+  PeriodOption, SavedDashboard, SavedReport, UploadImportResult, ImportDiagnosis
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -35,6 +35,8 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `Error ${res.status}`);
   }
+
+  if (res.status === 204) return undefined as unknown as T;
 
   return res.json();
 }
@@ -177,33 +179,14 @@ export async function deleteImport(importId: string): Promise<void> {
 }
 
 // Upload de fichero
-export async function uploadDataset(file: File): Promise<Dataset> {
+export async function uploadDataset(file: File): Promise<UploadImportResult> {
   const formData = new FormData();
   formData.append('file', file);
 
-  const result = await apiFetch<{
-    import_id: string;
-    filename: string;
-    status: string;
-    total_rows: number;
-    valid_rows: number;
-    detected_type: string;
-  }>('/api/imports/', {
+  return apiFetch<UploadImportResult & { suggestions?: string[] }>('/api/imports/', {
     method: 'POST',
     body: formData,
   });
-
-  return {
-    id:          result.import_id,
-    name:        result.filename.replace(/\.[^/.]+$/, ''),
-    filename:    result.filename,
-    fileType:    file.name.endsWith('.csv') ? 'csv' : 'xlsx',
-    rowCount:    result.total_rows,
-    columnCount: 0,
-    uploadedAt:  new Date().toISOString(),
-    status:      result.status === 'completed' ? 'ready' : result.status === 'failed' ? 'error' : 'processing',
-    tenantId:    '',
-  };
 }
 
 // ─── Legacy stubs (para no romper importaciones existentes) ──────────
@@ -235,8 +218,84 @@ export async function getInsights(_dashboardId: string) {
 }
 
 // Stubs para páginas que aún usan mock
-export async function getReports()  { return []; }
 export async function getTutorials() { return []; }
 export async function getTutorial(_slug: string) { return null; }
 export async function getFaqs() { return []; }
 export async function submitContactForm(_data: any) { return { success: true }; }
+
+// Dashboards guardados
+
+export async function createDashboard(data: {
+  name: string;
+  date_from?: string;
+  date_to?: string;
+  import_ids?: string[];    
+}): Promise<SavedDashboard> {
+  return apiFetch<SavedDashboard>('/api/dashboards/', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getSavedDashboards(): Promise<SavedDashboard[]> {
+  return apiFetch<SavedDashboard[]>('/api/dashboards/');
+}
+
+export async function getSavedDashboard(id: string): Promise<SavedDashboard & BackendKpiResponse> {
+  return apiFetch<SavedDashboard & BackendKpiResponse>(`/api/dashboards/${id}`);
+}
+
+export async function deleteSavedDashboard(id: string): Promise<void> {
+  await apiFetch(`/api/dashboards/${id}`, { method: 'DELETE' });
+}
+
+// ─── Informes guardados ───────────────────────────────────────────────
+
+export async function createReport(dashboardId: string): Promise<SavedReport> {
+  return apiFetch<SavedReport>('/api/reports/', {
+    method: 'POST',
+    body: JSON.stringify({ dashboard_id: dashboardId }),
+  });
+}
+
+export async function getReports(): Promise<SavedReport[]> {
+  return apiFetch<SavedReport[]>('/api/reports/');
+}
+
+export async function getReport(id: string): Promise<SavedReport> {
+  return apiFetch<SavedReport>(`/api/reports/${id}`);
+}
+
+export async function deleteReport(id: string): Promise<void> {
+  await apiFetch(`/api/reports/${id}`, { method: 'DELETE' });
+}
+
+
+export async function getImportDiagnosis(importId: string): Promise<ImportDiagnosis> {
+  return apiFetch<ImportDiagnosis>(`/api/imports/${importId}/diagnosis`);
+}
+
+export async function getImportPreview(importId: string): Promise<{
+  import_id: string;
+  detected_type: string;
+  row_count: number;
+  columns: string[];
+  rows: Record<string, any>[];
+}> {
+  return apiFetch(`/api/imports/${importId}/preview`);
+}
+
+export async function getImportImpact(importId: string): Promise<{
+  import_id: string;
+  filename: string;
+  has_impact: boolean;
+  affected: {
+    dashboard_id: string;
+    dashboard_name: string;
+    total_imports: number;
+    remaining: number;
+    will_be_deleted: boolean;
+  }[];
+}> {
+  return apiFetch(`/api/imports/${importId}/impact`);
+}

@@ -238,3 +238,78 @@ export interface AvailableRange {
 }
 
 export type PeriodOption = 'last_30' | 'last_90' | 'ytd' | 'last_year' | 'all' | 'custom';
+
+export interface SavedDashboard {
+  id: string;
+  name: string;
+  date_from: string | null;
+  date_to: string | null;
+  import_ids: string[];
+  created_at: string;
+}
+
+export interface SavedReport {
+  id: string;
+  dashboard_id: string | null;
+  dashboard_name: string;
+  date_from: string | null;
+  date_to: string | null;
+  insights: string | null;
+  kpi_snapshot: Record<string, any> | null;
+  created_at: string;
+}
+
+export interface ImportIssue {
+  code?: string | null;
+  title?: string | null;
+  description?: string | null;
+  suggestion?: string | null;
+  count: number;
+}
+
+export interface ImportSheetDiagnosis {
+  sheet_name: string;
+  detected_type: string;
+  detection_confidence: number;
+  valid_rows: number;
+  invalid_rows: number;
+  skipped_rows: number;
+  top_errors: ImportIssue[];
+  top_warnings: ImportIssue[];
+  diagnosis?: string | null;
+  main_reason_code?: string | null;
+  main_reason?: string | null;
+  user_message?: string | null;
+  suggestions: string[];
+}
+
+export interface ImportDiagnosis {
+  import_id: string;
+  filename: string;
+  status: string;
+  detected_type: string;
+  detection_confidence: number;
+  valid_rows: number;
+  invalid_rows: number;
+  skipped_rows: number;
+  main_reason_code?: string | null;
+  main_reason?: string | null;
+  user_message?: string | null;
+  top_errors: ImportIssue[];
+  top_warnings: ImportIssue[];
+  suggestions: string[];
+  sheets: ImportSheetDiagnosis[];
+}
+
+export interface UploadImportResult {
+  import_id: string;
+  filename: string;
+  status: string;
+  total_rows: number;
+  valid_rows: number;
+  invalid_rows: number;
+  detected_type: string;
+  main_reason?: string | null;
+  user_message?: string | null;
+  suggestions: string[];
+}

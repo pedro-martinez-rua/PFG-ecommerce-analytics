@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import { uploadDataset } from '@/lib/api';
-import { Dataset } from '@/lib/types';
+import { UploadImportResult } from '@/lib/types';
 import {
   Upload,
   FileSpreadsheet,
@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   AlertCircle,
   X,
+  Info,
 } from 'lucide-react';
 
 type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
@@ -24,7 +25,7 @@ export function UploadPage() {
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<UploadStatus>('idle');
-  const [dataset, setDataset] = useState<Dataset | null>(null);
+  const [result, setResult] = useState<UploadImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const MAX_SIZE_MB = 50;
@@ -65,15 +66,15 @@ export function UploadPage() {
       setStatus('uploading');
 
       try {
-        const result = await uploadDataset(selectedFile);
-        setDataset(result);
+        const uploadResult = await uploadDataset(selectedFile);
+        setResult(uploadResult);
         setStatus('success');
-      } catch {
-        setError(t('upload.errors.uploadFailed'));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : t('upload.errors.uploadFailed');
+        setError(message);
         setStatus('error');
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [t]
   );
 
@@ -111,7 +112,7 @@ export function UploadPage() {
 
   const handleReset = () => {
     setFile(null);
-    setDataset(null);
+    setResult(null);
     setStatus('idle');
     setError(null);
   };
@@ -122,6 +123,8 @@ export function UploadPage() {
     if (ext === 'csv' || ext === 'xlsx' || ext === 'xls') return FileSpreadsheet;
     return File;
   };
+
+  const completedOk = result?.status === 'completed';
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
@@ -134,44 +137,83 @@ export function UploadPage() {
         </p>
       </div>
 
-      {/* Success State */}
-      {status === 'success' && dataset && (
+      {status === 'success' && result && (
         <div className="bg-background rounded-lg border p-8 text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-success/10 mb-4">
-            <CheckCircle2 className="h-8 w-8 text-success" />
+          <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${completedOk ? 'bg-success/10' : 'bg-warning/10'}`}>
+            {completedOk ? (
+              <CheckCircle2 className="h-8 w-8 text-success" />
+            ) : (
+              <AlertCircle className="h-8 w-8 text-warning" />
+            )}
           </div>
 
           <h2 className="text-xl font-semibold text-foreground mb-2">
-            {t('upload.success.title')}
+            {completedOk ? t('upload.success.title') : 'Archivo procesado con incidencias'}
           </h2>
           <p className="text-muted-foreground mb-6">
-            {t('upload.success.subtitle')}
+            {completedOk ? t('upload.success.subtitle') : (result.user_message || 'El fichero se ha cargado, pero algunas filas no han podido procesarse.')}
           </p>
 
           <div className="bg-muted rounded-lg p-4 mb-6 text-left">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-muted-foreground">{t('upload.success.summary.dataset')}</p>
-                <p className="font-medium text-foreground">{dataset.name}</p>
+                <p className="text-muted-foreground">Archivo</p>
+                <p className="font-medium text-foreground">{result.filename}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">{t('upload.success.summary.fileType')}</p>
-                <p className="font-medium text-foreground uppercase">{dataset.fileType}</p>
+                <p className="text-muted-foreground">Tipo detectado</p>
+                <p className="font-medium text-foreground uppercase">{result.detected_type || 'unknown'}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">{t('upload.success.summary.rows')}</p>
-                <p className="font-medium text-foreground">{dataset.rowCount.toLocaleString()}</p>
+                <p className="text-muted-foreground">Filas totales</p>
+                <p className="font-medium text-foreground">{result.total_rows.toLocaleString()}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">{t('upload.success.summary.columns')}</p>
-                <p className="font-medium text-foreground">{dataset.columnCount}</p>
+                <p className="text-muted-foreground">Filas válidas</p>
+                <p className="font-medium text-foreground">{result.valid_rows.toLocaleString()}</p>
               </div>
+              <div>
+                <p className="text-muted-foreground">Filas inválidas</p>
+                <p className="font-medium text-foreground">{result.invalid_rows.toLocaleString()}</p>
+              </div>
+              {result.main_reason && (
+                <div>
+                  <p className="text-muted-foreground">Motivo principal</p>
+                  <p className="font-medium text-foreground">{result.main_reason}</p>
+                </div>
+              )}
             </div>
           </div>
 
+          {(result.main_reason || result.suggestions.length > 0) && (
+            <div className="mb-6 rounded-lg border bg-muted/40 p-4 text-left">
+              {result.main_reason && (
+                <div className="flex items-start gap-2 mb-3">
+                  <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
+                  <div>
+                    <p className="font-medium text-foreground">{result.main_reason}</p>
+                    {result.user_message && (
+                      <p className="text-sm text-muted-foreground mt-1">{result.user_message}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+              {result.suggestions.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-foreground mb-2">Qué revisar</p>
+                  <ul className="space-y-1 text-sm text-muted-foreground">
+                    {result.suggestions.slice(0, 3).map((suggestion) => (
+                      <li key={suggestion}>• {suggestion}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-3 justify-center">
-            <Button onClick={() => navigate('/app/dashboards')}>
-              {t('upload.success.actions.viewDashboards')}
+            <Button onClick={() => navigate('/app/imports')}>
+              Ver imports
             </Button>
             <Button variant="outline" onClick={handleReset}>
               {t('upload.success.actions.uploadAnother')}
@@ -180,7 +222,6 @@ export function UploadPage() {
         </div>
       )}
 
-      {/* Upload Area */}
       {status !== 'success' && (
         <>
           <div
@@ -235,7 +276,6 @@ export function UploadPage() {
             </div>
           </div>
 
-          {/* Error Message */}
           {error && (
             <div className="flex items-start gap-3 bg-destructive/10 border border-destructive/20 rounded-lg p-4">
               <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
@@ -252,7 +292,6 @@ export function UploadPage() {
             </div>
           )}
 
-          {/* File Preview */}
           {file && status === 'uploading' && (
             <div className="flex items-center gap-3 bg-muted rounded-lg p-4">
               {(() => {
@@ -269,7 +308,6 @@ export function UploadPage() {
             </div>
           )}
 
-          {/* Help Text */}
           <div className="bg-muted/50 rounded-lg p-4">
             <h3 className="font-medium text-foreground mb-2">
               {t('upload.tips.title')}
@@ -278,7 +316,6 @@ export function UploadPage() {
               <li>• {t('upload.tips.items.headers')}</li>
               <li>• {t('upload.tips.items.dates')}</li>
               <li>• {t('upload.tips.items.numbers')}</li>
-              <li>• {t('upload.tips.items.maxSize', { max: MAX_SIZE_MB })}</li>
             </ul>
           </div>
         </>

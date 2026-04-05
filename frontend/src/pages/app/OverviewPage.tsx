@@ -1,313 +1,477 @@
 import { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router-dom';
-
-
+import { useNavigate } from 'react-router-dom';
 import { Link } from '@/components/Link';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import {
-  getKpiResponse, getInsightsText,
-  getDashboards, getAvailableRange
+  getImports, getSavedDashboards, getReports, getAvailableRange
 } from '@/lib/api';
-import { KPI, BackendKpiResponse, AvailableRange, PeriodOption } from '@/lib/types';
-import { KpiCard, ChartCard, AiInsightsPanel } from '@/components/shared';
+import { BackendImport, SavedDashboard, SavedReport, AvailableRange } from '@/lib/types';
 import {
-  ArrowRight, Upload, Sparkles, Clock,
-  FolderKanban, TrendingUp, Lightbulb,
-  Calendar,
+  Upload, LayoutDashboard, FileText, ArrowRight,
+  CheckCircle2, Calendar, BarChart3, Sparkles,
+  ChevronRight, Clock, Database, AlertCircle,
+  TrendingUp, BookOpen,
 } from 'lucide-react';
 
-// Selector de periodo
-const PERIOD_OPTIONS: { value: PeriodOption; label: string }[] = [
-  { value: 'last_30',   label: 'Últimos 30 días' },
-  { value: 'last_90',   label: 'Últimos 90 días' },
-  { value: 'ytd',       label: 'Este año' },
-  { value: 'last_year', label: 'Año anterior' },
-  { value: 'all',       label: 'Todos los datos' },
-];
+// ─── Helpers ──────────────────────────────────────────────────────────
 
-// Mapea BackendKpiResponse → KPI[] para KpiCard
-function mapToKpiCards(response: BackendKpiResponse): KPI[] {
-  const entries: Array<{ key: string; name: string; format: KPI['format']; invert?: boolean }> = [
-    { key: 'total_revenue',        name: 'Revenue Total',       format: 'currency' },
-    { key: 'order_count',          name: 'Pedidos',             format: 'number' },
-    { key: 'avg_order_value',      name: 'Valor Medio Pedido',  format: 'currency' },
-    { key: 'gross_margin_pct',     name: 'Margen Bruto',        format: 'percentage' },
-    { key: 'repeat_purchase_rate', name: 'Tasa Recompra',       format: 'percentage' },
-    { key: 'return_rate',          name: 'Tasa Devoluciones',   format: 'percentage', invert: true },
-  ];
-
-  return entries
-    .map(({ key, name, format, invert }) => {
-      const d = (response.kpis as Record<string, any>)[key];
-      if (!d || d.availability === 'missing' || d.value === null) return null;
-      const change = d.growth_pct ?? 0;
-      const positive = invert ? change < 0 : change > 0;
-      return {
-        id: key, name, format, tenantId: '',
-        value: d.value,
-        previousValue: d.vs_previous ?? d.value,
-        change: Math.abs(change),
-        changeType: (change === 0 ? 'neutral' : positive ? 'positive' : 'negative') as KPI['changeType'],
-      };
-    })
-    .filter(Boolean) as KPI[];
+function StatusDot({ status }: { status: string }) {
+  if (status === 'completed') return (
+    <span className="flex items-center gap-1 text-xs text-success">
+      <CheckCircle2 className="h-3 w-3" />Completado
+    </span>
+  );
+  if (status === 'failed') return (
+    <span className="flex items-center gap-1 text-xs text-destructive">
+      <AlertCircle className="h-3 w-3" />Fallido
+    </span>
+  );
+  return (
+    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+      <Clock className="h-3 w-3" />Procesando
+    </span>
+  );
 }
 
+function formatDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString('es-ES', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  });
+}
+
+// ─── Sección genérica con título + "Ver todos" ────────────────────────
+
+function Section({
+  title,
+  icon: Icon,
+  count,
+  href,
+  children,
+  emptyTitle,
+  emptyDesc,
+  emptyAction,
+}: {
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  count: number;
+  href: string;
+  children: React.ReactNode;
+  emptyTitle: string;
+  emptyDesc: string;
+  emptyAction?: { label: string; href: string };
+}) {
+  return (
+    <div className="bg-background border rounded-xl overflow-hidden">
+      {/* Header de sección */}
+      <div className="flex items-center justify-between px-5 py-4 border-b">
+        <div className="flex items-center gap-2">
+          <Icon className="h-4 w-4 text-secondary" />
+          <h2 className="font-semibold text-foreground">{title}</h2>
+          {count > 0 && (
+            <span className="bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full">
+              {count}
+            </span>
+          )}
+        </div>
+        {count > 0 && (
+          <Link href={href} className="flex items-center gap-1 text-xs text-secondary hover:text-secondary">
+            Ver todos <ArrowRight className="h-3 w-3" />
+          </Link>
+        )}
+      </div>
+
+      {/* Contenido */}
+      {count === 0 ? (
+        <div className="px-5 py-8 text-center">
+          <p className="text-sm font-medium text-foreground mb-1">{emptyTitle}</p>
+          <p className="text-xs text-muted-foreground mb-3">{emptyDesc}</p>
+          {emptyAction && (
+            <Link href={emptyAction.href}>
+              <Button size="sm" variant="outline">{emptyAction.label}</Button>
+            </Link>
+          )}
+        </div>
+      ) : (
+        children
+      )}
+    </div>
+  );
+}
+
+// ─── Cómo funciona ────────────────────────────────────────────────────
+
+const STEPS = [
+  {
+    step: '1',
+    icon: Upload,
+    title: 'Sube tus datos',
+    desc: 'Importa tu CSV o Excel con pedidos, clientes o productos. El sistema los procesa automáticamente.',
+    href: '/app/upload',
+    action: 'Subir datos',
+  },
+  {
+    step: '2',
+    icon: LayoutDashboard,
+    title: 'Crea un dashboard',
+    desc: 'Selecciona los ficheros que quieres analizar, dales un nombre y genera tu dashboard con KPIs y gráficas.',
+    href: '/app/dashboards',
+    action: 'Ir a dashboards',
+  },
+  {
+    step: '3',
+    icon: Sparkles,
+    title: 'Obtén análisis de IA',
+    desc: 'Desde el dashboard, activa el análisis de IA para recibir recomendaciones concretas sobre tu negocio.',
+    href: '/app/dashboards',
+    action: 'Ver dashboards',
+  },
+  {
+    step: '4',
+    icon: FileText,
+    title: 'Guarda informes',
+    desc: 'Guarda snapshots de tus dashboards con el análisis de IA incluido. Consúltalos cuando quieras.',
+    href: '/app/reports',
+    action: 'Ver informes',
+  },
+];
+
+// ─── Página principal ─────────────────────────────────────────────────
+
 export function OverviewPage() {
-  const { t } = useTranslation();
   const { user, tenant } = useAuth();
+  const navigate = useNavigate();
 
-  const [period, setPeriod]           = useState<PeriodOption>('all');
-  const [kpiResponse, setKpiResponse] = useState<BackendKpiResponse | null>(null);
-  const [kpis, setKpis]               = useState<KPI[]>([]);
-  const [dashboards, setDashboards]   = useState<any[]>([]);
-  const [availableRange, setAvailableRange] = useState<AvailableRange | null>(null);
-  const [insightsText, setInsightsText] = useState<string>('');
-  const [loading, setLoading]         = useState(true);
-  const [insightsLoading, setInsightsLoading] = useState(false);
-  const [showInsights, setShowInsights] = useState(false);
-  const [searchParams] = useSearchParams();
-  const initialPeriod = (searchParams.get('period') as PeriodOption) || 'all';
-  const urlDateFrom = searchParams.get('date_from') || undefined;
-  const urlDateTo   = searchParams.get('date_to')   || undefined;
+  const [imports, setImports]       = useState<BackendImport[]>([]);
+  const [dashboards, setDashboards] = useState<SavedDashboard[]>([]);
+  const [reports, setReports]       = useState<SavedReport[]>([]);
+  const [range, setRange]           = useState<AvailableRange | null>(null);
+  const [loading, setLoading]       = useState(true);
 
-  // Cargar datos cuando cambia el periodo
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const [kpiRes, dashboardData, range] = await Promise.all([
-          getKpiResponse(
-            period,
-            period === 'custom' ? urlDateFrom : undefined,
-            period === 'custom' ? urlDateTo   : undefined
-          ),
-          getDashboards(),
-          getAvailableRange(),
-        ]);
-        setKpiResponse(kpiRes);
-        setKpis(mapToKpiCards(kpiRes));
-        setDashboards(dashboardData);
-        setAvailableRange(range);
-      } catch (e) {
-        console.error('Error cargando datos:', e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [period]);
+    Promise.all([
+      getImports(),
+      getSavedDashboards(),
+      getReports(),
+      getAvailableRange(),
+    ]).then(([imp, dash, rep, rng]) => {
+      setImports(imp);
+      setDashboards(dash);
+      setReports(rep);
+      setRange(rng);
+    }).finally(() => setLoading(false));
+  }, []);
 
-  const handleLoadInsights = async () => {
-    setShowInsights(true);
-    if (insightsText) return; // ya cargados
-    setInsightsLoading(true);
-    try {
-      const text = await getInsightsText(period);
-      setInsightsText(text);
-    } catch {
-      setInsightsText('No se pudieron cargar los insights. Inténtalo de nuevo.');
-    } finally {
-      setInsightsLoading(false);
-    }
-  };
+  const firstName = user?.fullName?.split(' ')[0] || '';
+  const hasAnyData = imports.length > 0 || dashboards.length > 0 || reports.length > 0;
 
-  const recentImport = dashboards[0];
-  const firstName    = user?.fullName?.split(' ')[0] || '';
-
-  const nextActions = [
-    {
-      icon: Upload,
-      title: 'Subir datos',
-      description: 'Añade un nuevo CSV o Excel con tus ventas',
-      href: '/app/upload',
-    },
-    {
-      icon: FolderKanban,
-      title: 'Ver imports',
-      description: 'Gestiona los ficheros que has subido',
-      href: '/app/dashboards',
-    },
-    {
-      icon: Sparkles,
-      title: 'Análisis IA',
-      description: 'Obtén recomendaciones personalizadas',
-      action: handleLoadInsights,
-    },
-  ];
+  // Últimos 3 de cada tipo para mostrar en preview
+  const recentImports    = imports.slice(0, 3);
+  const recentDashboards = dashboards.slice(0, 3);
+  const recentReports    = reports.slice(0, 3);
 
   return (
     <div className="space-y-8">
-      {/* Header + selector de periodo */}
+
+      {/* ── Bienvenida ───────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground mb-1">
-            {t('overview.welcome.title', { name: firstName })}
+            {firstName ? `Hola, ${firstName}` : 'Bienvenido'}
           </h1>
           <p className="text-muted-foreground">
-            {tenant?.name || ''}
-            {availableRange?.has_data && (
-              <span className="ml-2 text-xs text-muted-foreground">
-                · Datos desde {availableRange.date_from} hasta {availableRange.date_to}
+            {tenant?.name && <span className="font-medium">{tenant.name}</span>}
+            {range?.has_data && (
+              <span className="ml-2 text-sm">
+                · Datos disponibles desde{' '}
+                <span className="font-medium">{range.date_from}</span>
+                {' '}hasta{' '}
+                <span className="font-medium">{range.date_to}</span>
+                {' '}({range.total_orders.toLocaleString('es-ES')} pedidos)
               </span>
             )}
           </p>
         </div>
 
-        {/* Selector de periodo */}
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          <select
-            value={period}
-            onChange={(e) => {
-              setPeriod(e.target.value as PeriodOption);
-              setInsightsText(''); // resetear insights al cambiar periodo
-            }}
-            className="text-sm border rounded-md px-3 py-1.5 bg-background text-foreground"
-          >
-            {PERIOD_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </div>
+        {/* Acción principal según estado */}
+        {!loading && (
+          imports.length === 0 ? (
+            <Link href="/app/upload">
+              <Button className="gap-2">
+                <Upload className="h-4 w-4" />
+                Subir primeros datos
+              </Button>
+            </Link>
+          ) : dashboards.length === 0 ? (
+            <Link href="/app/dashboards">
+              <Button className="gap-2">
+                <LayoutDashboard className="h-4 w-4" />
+                Crear primer dashboard
+              </Button>
+            </Link>
+          ) : (
+            <Link href="/app/dashboards">
+              <Button variant="outline" className="gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Ver dashboards
+              </Button>
+            </Link>
+          )
+        )}
       </div>
 
-      {/* Aviso si no hay datos */}
-      {!loading && availableRange && !availableRange.has_data && (
-        <div className="bg-muted/50 border rounded-lg p-6 text-center">
-          <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-          <p className="font-medium">No tienes datos cargados aún</p>
-          <p className="text-sm text-muted-foreground mb-4">
-            Sube tu primer CSV o Excel para empezar a ver tus KPIs
-          </p>
-          <Link href="/app/upload">
-            <Button size="sm">Subir datos</Button>
-          </Link>
-        </div>
-      )}
-
-      {/* KPI Cards */}
-      {(loading || kpis.length > 0) && (
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-foreground">Métricas clave</h2>
-            <Button variant="ghost" size="sm" onClick={handleLoadInsights} className="gap-1">
-              <Sparkles className="h-4 w-4" />
-              Analizar con IA
-            </Button>
+      {/* ── Cómo funciona (solo si no hay datos aún) ─────────────── */}
+      {!loading && !hasAnyData && (
+        <div className="bg-gradient-to-br from-secondary/5 to-muted/50 border rounded-xl p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <BookOpen className="h-4 w-4 text-secondary" />
+            <h2 className="font-semibold">¿Cómo funciona CommerceIQ?</h2>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {loading
-              ? Array(6).fill(0).map((_, i) => <KpiCard key={i} kpi={{} as KPI} loading />)
-              : kpis.map((kpi) => <KpiCard key={kpi.id} kpi={kpi} />)}
-          </div>
-        </section>
-      )}
-
-      {/* Gráficas */}
-      {(loading || kpiResponse) && (
-        <section className="grid lg:grid-cols-2 gap-6">
-          <ChartCard
-            title="Revenue en el tiempo"
-            subtitle={`Evolución por ${(kpiResponse?.charts?.revenue_over_time?.length || 0) > 90 ? 'mes' : 'día'}`}
-            loading={loading}
-            data={kpiResponse?.charts?.revenue_over_time}
-          />
-          <ChartCard
-            title="Pedidos en el tiempo"
-            subtitle="Evolución del volumen de pedidos"
-            loading={loading}
-            data={kpiResponse?.charts?.orders_over_time}
-          />
-        </section>
-      )}
-
-      {/* Layout inferior */}
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-
-          {/* Import reciente */}
-          {recentImport && !loading && (
-            <section className="bg-background rounded-lg border p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Clock className="h-5 w-5 text-muted-foreground" />
-                <h2 className="text-lg font-semibold">Último import</h2>
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-foreground">{recentImport.name}</p>
-                  <p className="text-sm text-muted-foreground">{recentImport.description}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {new Date(recentImport.updatedAt).toLocaleDateString('es-ES')}
-                  </p>
-                </div>
-                <Link href="/app/dashboards">
-                  <Button size="sm">Ver imports</Button>
-                </Link>
-              </div>
-            </section>
-          )}
-
-          {/* Preview insights */}
-          <section className="bg-background rounded-lg border p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Lightbulb className="h-5 w-5 text-secondary" />
-                <h2 className="text-lg font-semibold">Análisis IA</h2>
-              </div>
-              <Button variant="ghost" size="sm" onClick={handleLoadInsights}>
-                {insightsText ? 'Ver análisis completo' : 'Generar análisis'}
-              </Button>
-            </div>
-
-            {insightsText ? (
-              <p className="text-sm text-muted-foreground line-clamp-3">
-                {insightsText.replace(/\*\*/g, '').split('\n')[0]}
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Pulsa "Generar análisis" para obtener recomendaciones personalizadas basadas en tus datos.
-              </p>
-            )}
-          </section>
-        </div>
-
-        {/* Próximos pasos */}
-        <section className="bg-background rounded-lg border p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <TrendingUp className="h-5 w-5 text-success" />
-            <h2 className="text-lg font-semibold">Acciones</h2>
-          </div>
-          <div className="space-y-3">
-            {nextActions.map((action, index) => {
-              const Icon = action.icon;
-              const content = (
-                <div className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors cursor-pointer">
-                  <div className="bg-muted rounded-lg p-2">
-                    <Icon className="h-4 w-4 text-muted-foreground" />
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {STEPS.map(s => {
+              const Icon = s.icon;
+              return (
+                <div key={s.step} className="bg-background rounded-lg p-4 border">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-secondary text-white text-xs font-bold">
+                      {s.step}
+                    </span>
+                    <Icon className="h-4 w-4 text-secondary" />
                   </div>
-                  <div>
-                    <p className="font-medium text-foreground text-sm">{action.title}</p>
-                    <p className="text-xs text-muted-foreground">{action.description}</p>
-                  </div>
+                  <p className="font-medium text-sm mb-1">{s.title}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed mb-3">{s.desc}</p>
+                  <Link href={s.href}>
+                    <Button size="sm" variant="outline" className="w-full text-xs">
+                      {s.action}
+                    </Button>
+                  </Link>
                 </div>
               );
-              if (action.href) return <Link key={index} href={action.href}>{content}</Link>;
-              return <div key={index} onClick={action.action}>{content}</div>;
             })}
           </div>
-        </section>
-      </div>
+        </div>
+      )}
 
-      {/* Panel lateral de insights */}
-      {showInsights && (
-        <AiInsightsPanel
-          rawText={insightsText}
-          loading={insightsLoading}
-          onClose={() => setShowInsights(false)}
-        />
+      {/* ── Resumen numérico rápido (solo si hay datos) ───────────── */}
+      {!loading && hasAnyData && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            {
+              label: 'Imports',
+              value: imports.length,
+              icon: Database,
+              href: '/app/imports',
+              sub: `${imports.filter(i => i.status === 'completed').length} completados`,
+            },
+            {
+              label: 'Dashboards',
+              value: dashboards.length,
+              icon: LayoutDashboard,
+              href: '/app/dashboards',
+              sub: dashboards[0]?.name || '—',
+            },
+            {
+              label: 'Informes',
+              value: reports.length,
+              icon: FileText,
+              href: '/app/reports',
+              sub: reports[0] ? formatDate(reports[0].created_at) : '—',
+            },
+            {
+              label: 'Pedidos analizados',
+              value: range?.total_orders?.toLocaleString('es-ES') ?? '—',
+              icon: TrendingUp,
+              href: '/app/dashboards',
+              sub: range?.has_data ? `${range.months_with_data} meses de datos` : 'Sin datos de pedidos',
+            },
+          ].map(card => {
+            const Icon = card.icon;
+            return (
+              <Link key={card.label} href={card.href} className="block">
+                <div className="bg-background border rounded-xl p-4 hover:shadow-card transition-shadow">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-muted-foreground">{card.label}</p>
+                    <Icon className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <p className="text-2xl font-bold text-foreground">{card.value}</p>
+                  <p className="text-xs text-muted-foreground mt-1 truncate">{card.sub}</p>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── 3 columnas: Imports · Dashboards · Informes ───────────── */}
+      {!loading && (
+        <div className="grid lg:grid-cols-3 gap-5">
+
+          {/* Imports recientes */}
+          <Section
+            title="Imports"
+            icon={Database}
+            count={imports.length}
+            href="/app/imports"
+            emptyTitle="Sin imports"
+            emptyDesc="Sube tu primer CSV o Excel para empezar."
+            emptyAction={{ label: 'Subir datos', href: '/app/upload' }}
+          >
+            <div className="divide-y">
+              {recentImports.map(imp => (
+                <Link
+                  key={imp.id}
+                  href="/app/imports"
+                  className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors"
+                >
+                  <div className="bg-muted rounded p-1.5">
+                    <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{imp.filename}</p>
+                    <div className="flex items-center gap-2">
+                      <StatusDot status={imp.status} />
+                      <span className="text-xs text-muted-foreground">
+                        {imp.valid_rows.toLocaleString('es-ES')} filas
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                </Link>
+              ))}
+              {imports.length > 3 && (
+                <div className="px-5 py-2 text-xs text-muted-foreground text-center">
+                  +{imports.length - 3} imports más
+                </div>
+              )}
+            </div>
+          </Section>
+
+          {/* Dashboards recientes */}
+          <Section
+            title="Dashboards"
+            icon={LayoutDashboard}
+            count={dashboards.length}
+            href="/app/dashboards"
+            emptyTitle="Sin dashboards"
+            emptyDesc="Crea un dashboard combinando tus imports."
+            emptyAction={{ label: 'Crear dashboard', href: '/app/dashboards' }}
+          >
+            <div className="divide-y">
+              {recentDashboards.map(d => (
+                <Link
+                  key={d.id}
+                  href={`/app/dashboards/${d.id}`}
+                  className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors"
+                >
+                  <div className="bg-muted rounded p-1.5">
+                    <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{d.name}</p>
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      {d.date_from && d.date_to ? (
+                        <>
+                          <Calendar className="h-3 w-3" />
+                          {d.date_from} → {d.date_to}
+                        </>
+                      ) : (
+                        <span>Todos los datos</span>
+                      )}
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                </Link>
+              ))}
+              {dashboards.length > 3 && (
+                <div className="px-5 py-2 text-xs text-muted-foreground text-center">
+                  +{dashboards.length - 3} dashboards más
+                </div>
+              )}
+            </div>
+          </Section>
+
+          {/* Informes recientes */}
+          <Section
+            title="Informes guardados"
+            icon={FileText}
+            count={reports.length}
+            href="/app/reports"
+            emptyTitle="Sin informes"
+            emptyDesc="Guarda un informe desde cualquier dashboard."
+            emptyAction={{ label: 'Ver dashboards', href: '/app/dashboards' }}
+          >
+            <div className="divide-y">
+              {recentReports.map(r => (
+                <Link
+                  key={r.id}
+                  href="/app/reports"
+                  className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors"
+                >
+                  <div className="bg-muted rounded p-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-secondary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{r.dashboard_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDate(r.created_at)}
+                    </p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                </Link>
+              ))}
+              {reports.length > 3 && (
+                <div className="px-5 py-2 text-xs text-muted-foreground text-center">
+                  +{reports.length - 3} informes más
+                </div>
+              )}
+            </div>
+          </Section>
+        </div>
+      )}
+
+      {/* ── Accesos rápidos (siempre visibles si hay datos) ───────── */}
+      {!loading && hasAnyData && (
+        <div className="bg-gradient-to-br from-secondary/5 to-muted/50 border rounded-xl p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="h-4 w-4 text-secondary" />
+            <h2 className="font-semibold">Acciones rápidas</h2>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {STEPS.map(s => {
+              const Icon = s.icon;
+              return (
+                <Link key={s.step} href={s.href}>
+                  <div className="flex items-center gap-3 bg-background rounded-lg p-3 border hover:shadow-card transition-shadow cursor-pointer">
+                    <div className="bg-secondary/10 rounded-lg p-2">
+                      <Icon className="h-4 w-4 text-secondary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{s.title}</p>
+                      <p className="text-xs text-muted-foreground">{s.action}</p>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground ml-auto" />
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Loading skeleton ──────────────────────────────────────── */}
+      {loading && (
+        <div className="space-y-4 animate-pulse">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {Array(4).fill(0).map((_, i) => (
+              <div key={i} className="h-24 bg-muted rounded-xl" />
+            ))}
+          </div>
+          <div className="grid lg:grid-cols-3 gap-5">
+            {Array(3).fill(0).map((_, i) => (
+              <div key={i} className="h-48 bg-muted rounded-xl" />
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

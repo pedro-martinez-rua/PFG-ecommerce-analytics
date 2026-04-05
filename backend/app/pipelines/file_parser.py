@@ -20,6 +20,7 @@ Edge cases manejados:
 - CSV con solo cabecera y sin datos
 - Encoding mixto o desconocido
 - Ficheros binarios renombrados como CSV/XLSX
+- Falta de encabezado (mas abajo)
 """
 import io
 import re
@@ -38,10 +39,6 @@ class ParsedSheet:
     warnings:      list[str] = field(default_factory=list)
 
 
-# ─────────────────────────────────────────────
-# FIRMAS DE FICHEROS PELIGROSOS
-# Bytes que identifican ficheros binarios que no son CSV/XLSX
-# ─────────────────────────────────────────────
 DANGEROUS_SIGNATURES = [
     (b"\x4D\x5A",           "ejecutable Windows (EXE/DLL)"),
     (b"\x7FELF",            "ejecutable Linux (ELF)"),
@@ -55,11 +52,6 @@ DANGEROUS_SIGNATURES = [
     (b"\x1f\x8b",          "archivo GZIP"),
     (b"Rar!\x1a\x07",      "archivo RAR"),
 ]
-
-
-# ─────────────────────────────────────────────
-# VALIDACIÓN DE MAGIC BYTES
-# ─────────────────────────────────────────────
 
 def _validate_magic_bytes(content: bytes, filename: str) -> None:
     """
@@ -103,11 +95,6 @@ def _validate_magic_bytes(content: bytes, filename: str) -> None:
                 "El fichero no parece ser texto válido. "
                 "Verifica que el fichero CSV no está corrupto o en formato binario."
             )
-
-
-# ─────────────────────────────────────────────
-# LIMPIEZA DE COLUMNAS
-# ─────────────────────────────────────────────
 
 def _clean_columns(df: pd.DataFrame, sheet_name: str) -> tuple[pd.DataFrame, list[str]]:
     """
@@ -168,11 +155,6 @@ def _clean_columns(df: pd.DataFrame, sheet_name: str) -> tuple[pd.DataFrame, lis
 
     return df, col_warnings
 
-
-# ─────────────────────────────────────────────
-# PUNTO DE ENTRADA
-# ─────────────────────────────────────────────
-
 def parse_file(content: bytes, filename: str) -> list[ParsedSheet]:
     """
     Lee un fichero CSV o XLSX y devuelve una lista de ParsedSheet.
@@ -197,18 +179,242 @@ def parse_file(content: bytes, filename: str) -> list[ParsedSheet]:
             f"Se aceptan ficheros .csv y .xlsx"
         )
 
+def _infer_header_from_content(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Si el CSV no tiene cabecera real, intenta inferir nombres de columna
+    analizando el tipo de dato de cada columna.
+    Se activa cuando los nombres de columna son numéricos (0, 1, 2...)
+    o cuando la primera fila parece datos reales, no cabeceras.
+    """
+    import re
 
-# ─────────────────────────────────────────────
-# PARSER CSV
-# ─────────────────────────────────────────────
+    def _looks_like_date(series: pd.Series) -> bool:
+        sample = series.dropna().head(10)
+        date_pattern = re.compile(
+            r'\d{4}[-/]\d{2}[-/]\d{2}|\d{2}[-/]\d{2}[-/]\d{4}'
+        )
+        return sample.astype(str).apply(lambda v: bool(date_pattern.search(v))).mean() > 0.7
+
+    def _looks_like_big_int(series: pd.Series) -> bool:
+        sample = series.dropna().head(10)
+        return sample.astype(str).apply(
+            lambda v: v.isdigit() and len(v) > 8
+        ).mean() > 0.7
+
+    def _looks_like_price(series: pd.Series) -> bool:
+        sample = series.dropna().head(10)
+        def is_price(v):
+            try:
+                f = float(v)
+                return f > 0 and '.' in str(v)
+            except:
+                return False
+        return sample.astype(str).apply(is_price).mean() > 0.7
+
+    def _looks_like_small_int(series: pd.Series) -> bool:
+        sample = series.dropna().head(10)
+        def is_small_int(v):
+            try:
+                return float(v).is_integer() and 0 < float(v) < 1000
+            except:
+                return False
+        return sample.astype(str).apply(is_small_int).mean() > 0.7
+
+    def _looks_like_category(series: pd.Series) -> bool:
+        sample = series.dropna().head(20)
+        unique_ratio = sample.nunique() / max(len(sample), 1)
+        return unique_ratio < 0.5 and sample.astype(str).apply(
+            lambda v: bool(re.search(r'[a-zA-Z]', v))
+        ).mean() > 0.7
+
+    def _looks_like_boolean(series: pd.Series) -> bool:
+        sample = series.dropna().head(20)
+        values = set(sample.astype(str).str.lower().unique())
+        return values.issubset({'0', '1', 'true', 'false', 'yes', 'no', 't', 'f', ''})
+
+    # Detectar columnas numéricas (pandas las pone como 0, 1, 2...)
+    col_names = [str(c) for c in df.columns]
+    has_numeric_headers = all(c.isdigit() for c in col_names)
+    if not has_numeric_headers:
+        return df  # ya tiene cabecera real
+
+    # Asignar nombres inferidos por columna
+    inferred_names = {}
+    used_names: set = set()
+
+    date_assigned      = False
+    order_id_assigned  = False
+    customer_assigned  = False
+    product_assigned   = False
+    price_assigned     = False
+    qty_assigned       = False
+    category_assigned  = False
+    session_assigned   = False
+    return_assigned    = False
+
+    for col in df.columns:
+        series = df[col]
+        name = None
+
+        if _looks_like_date(series) and not date_assigned:
+            name = 'order_date'
+            date_assigned = True
+        elif _looks_like_big_int(series):
+            if not order_id_assigned:
+                name = 'order_id'
+                order_id_assigned = True
+            elif not customer_assigned:
+                name = 'user_id'
+                customer_assigned = True
+            elif not product_assigned:
+                name = 'product_id'
+                product_assigned = True
+            elif not session_assigned:
+                name = 'session_id'
+                session_assigned = True
+            else:
+                name = f'id_{col}'
+        elif _looks_like_price(series) and not price_assigned:
+            name = 'price'
+            price_assigned = True
+        elif _looks_like_boolean(series) and not return_assigned:
+            name = 'returned'
+            return_assigned = True
+        elif _looks_like_small_int(series) and not qty_assigned:
+            name = 'quantity'
+            qty_assigned = True
+        elif _looks_like_category(series) and not category_assigned:
+            name = 'category'
+            category_assigned = True
+        else:
+            name = f'col_{col}'
+
+        # Evitar nombres duplicados
+        if name in used_names:
+            name = f'{name}_{col}'
+        used_names.add(name)
+        inferred_names[col] = name
+
+    df = df.rename(columns=inferred_names)
+    return df
 
 def _parse_csv(content: bytes, filename: str) -> list[ParsedSheet]:
     """
     Lee un CSV probando combinaciones de encoding y separador.
-
-    Encodings: utf-8-sig (BOM), utf-8, latin-1, cp1252
-    Separadores: coma, punto y coma, tabulador
+    Detecta automáticamente si el archivo no tiene cabecera.
     """
+    for encoding in ["utf-8-sig", "utf-8", "latin-1", "cp1252"]:
+        for sep in [",", ";", "\t"]:
+            try:
+                # Leer sin cabecera para analizar la primera fila
+                df_raw = pd.read_csv(
+                    io.BytesIO(content),
+                    encoding=encoding,
+                    sep=sep,
+                    dtype=str,
+                    header=None,  # leer todo como datos primero
+                    on_bad_lines="skip",
+                    keep_default_na=False
+                )
+
+                # Eliminar filas completamente vacías
+                df_raw = df_raw.dropna(how="all").reset_index(drop=True)
+
+                if len(df_raw) == 0 or len(df_raw.columns) <= 1:
+                    continue
+
+                # Determinar si la primera fila es cabecera o datos
+                first_row = df_raw.iloc[0].astype(str)
+                has_header = _first_row_is_header(first_row)
+
+                if has_header:
+                    # Usar primera fila como cabecera
+                    df = pd.read_csv(
+                        io.BytesIO(content),
+                        encoding=encoding,
+                        sep=sep,
+                        dtype=str,
+                        on_bad_lines="skip",
+                        keep_default_na=False
+                    )
+                    df = df.dropna(how="all").reset_index(drop=True)
+                else:
+                    # Sin cabecera — usar df_raw con columnas numéricas
+                    df = df_raw.copy()
+                    df.columns = [str(i) for i in range(len(df.columns))]
+                    # Inferir nombres por contenido
+                    df = _infer_header_from_content(df)
+
+                # Limpiar columnas
+                df, col_warnings = _clean_columns(df, filename)
+
+                if len(df.columns) <= 1:
+                    continue
+
+                # Limpiar valores nulos
+                df = df.replace({"": None, "nan": None, "None": None, "NaT": None})
+                df = df.dropna(how="all")
+                df = df.reset_index(drop=True)
+
+                if len(df) == 0:
+                    raise ValueError(
+                        f"El fichero '{filename}' no contiene datos. "
+                        f"Columnas encontradas: {list(df.columns)}."
+                    )
+
+                return [ParsedSheet(
+                    sheet_name=filename,
+                    dataframe=df,
+                    source_format="csv",
+                    row_count=len(df),
+                    column_count=len(df.columns),
+                    columns=list(df.columns),
+                    warnings=col_warnings
+                )]
+
+            except ValueError:
+                raise
+            except Exception:
+                continue
+
+    raise ValueError(
+        "No se pudo leer el CSV. "
+        "Asegúrate de que el fichero es un CSV válido con columnas separadas "
+        "por coma, punto y coma o tabulador, y encoding UTF-8 o Latin-1."
+    )
+
+def _first_row_is_header(first_row: pd.Series) -> bool:
+    """
+    Determina si la primera fila contiene nombres de columna o datos reales.
+    Una fila es cabecera si:
+    - Contiene texto alfabético (no solo números o fechas)
+    - No contiene patrones de fecha/hora
+    - No contiene IDs numéricos largos
+    """
+    import re
+    date_pattern  = re.compile(r'\d{4}[-/]\d{2}[-/]\d{2}')
+    bigint_pattern = re.compile(r'^\d{10,}$')
+
+    text_count   = 0
+    date_count   = 0
+    bigint_count = 0
+
+    for val in first_row:
+        val_str = str(val).strip()
+        if date_pattern.search(val_str):
+            date_count += 1
+        elif bigint_pattern.match(val_str):
+            bigint_count += 1
+        elif re.search(r'[a-zA-Z_]', val_str) and not val_str.replace('.', '').replace(',', '').isdigit():
+            text_count += 1
+
+    total = len(first_row)
+    # Si más del 40% de los valores son texto alfabético → es cabecera
+    # Si hay fechas o IDs largos → son datos, no cabecera
+    if (date_count + bigint_count) > total * 0.3:
+        return False
+    return text_count > total * 0.4    
+    
     for encoding in ["utf-8-sig", "utf-8", "latin-1", "cp1252"]:
         for sep in [",", ";", "\t"]:
             try:
@@ -261,11 +467,6 @@ def _parse_csv(content: bytes, filename: str) -> list[ParsedSheet]:
         "Asegúrate de que el fichero es un CSV válido con columnas separadas "
         "por coma, punto y coma o tabulador, y encoding UTF-8 o Latin-1."
     )
-
-
-# ─────────────────────────────────────────────
-# PARSER XLSX
-# ─────────────────────────────────────────────
 
 def _parse_xlsx(content: bytes, filename: str) -> list[ParsedSheet]:
     """

@@ -13,6 +13,7 @@ import uuid
 import hashlib
 import pandas as pd
 from datetime import datetime, timezone
+from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.pipelines.file_parser import parse_file, ParsedSheet
@@ -170,7 +171,7 @@ def _process_sheet(
     db.refresh(import_sheet)
     sheet_id = str(import_sheet.id)
 
-    upload_type, confidence = detect_type_with_confidence(sheet.columns)
+    upload_type, confidence = detect_type_with_confidence(sheet.columns, sheet.dataframe)
     import_sheet.detected_type        = upload_type.value
     import_sheet.detection_confidence = confidence
     db.commit()
@@ -206,7 +207,7 @@ def _process_sheet(
     if saved_mapping:
         mapping = saved_mapping
     else:
-        mapping_with_confidence = infer_mapping_with_confidence(sheet.columns)
+        mapping_with_confidence = infer_mapping_with_confidence(sheet.columns, sheet.dataframe)
         mapping = {
             col: info["canonical"]
             for col, info in mapping_with_confidence.items()
