@@ -9,7 +9,7 @@ interface KpiCardProps {
 export function KpiCard({ kpi, loading }: KpiCardProps) {
   if (loading) {
     return (
-      <div className="bg-background rounded-lg border p-6 animate-pulse">
+      <div className="rounded-2xl border bg-card p-6 animate-pulse shadow-sm">
         <div className="h-4 bg-muted rounded w-24 mb-3" />
         <div className="h-8 bg-muted rounded w-32 mb-2" />
         <div className="h-4 bg-muted rounded w-16" />
@@ -41,21 +41,23 @@ export function KpiCard({ kpi, loading }: KpiCardProps) {
       : Minus;
 
   const trendColor = kpi.changeType === 'positive'
-    ? 'text-success'
+    ? 'bg-success/10 text-success'
     : kpi.changeType === 'negative'
-      ? 'text-destructive'
-      : 'text-muted-foreground';
+      ? 'bg-destructive/10 text-destructive'
+      : 'bg-muted text-muted-foreground';
 
   return (
-    <div className="bg-background rounded-lg border p-6 transition-shadow hover:shadow-card">
-      <p className="text-sm font-medium text-muted-foreground mb-1">{kpi.name}</p>
-      <p className="text-2xl font-semibold text-foreground mb-2">
+    <div className="rounded-2xl border bg-card p-6 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{kpi.name}</p>
+      <p className="mb-3 text-3xl font-semibold tracking-tight text-foreground">
         {formatValue(kpi.value, kpi.format)}
       </p>
-      <div className={`flex items-center gap-1 text-sm ${trendColor}`}>
-        <TrendIcon className="h-4 w-4" />
-        <span>{kpi.change > 0 ? '+' : ''}{kpi.change.toFixed(1)}%</span>
-        <span className="text-muted-foreground">vs last period</span>
+      <div className="flex items-center gap-2">
+        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${trendColor}`}>
+          <TrendIcon className="h-3.5 w-3.5" />
+          <span>{kpi.change > 0 ? '+' : ''}{kpi.change.toFixed(1)}%</span>
+        </span>
+        <span className="text-xs text-muted-foreground">vs last period</span>
       </div>
     </div>
   );

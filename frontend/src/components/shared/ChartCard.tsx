@@ -30,7 +30,7 @@ const formatValue = (value: number, prefix = '') => {
 const CustomTooltip = ({ active, payload, label, prefix }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-background border rounded-lg shadow-lg px-3 py-2 text-sm">
+    <div className="rounded-xl border bg-popover/95 px-3 py-2 text-sm shadow-md backdrop-blur">
       <p className="text-muted-foreground mb-1">{label}</p>
       <p className="font-semibold text-foreground">
         {prefix}{payload[0].value.toLocaleString('es-ES', { maximumFractionDigits: 2 })}
@@ -49,7 +49,7 @@ export function ChartCard({
 }: ChartCardProps) {
   if (loading) {
     return (
-      <div className="bg-background rounded-lg border p-6 animate-pulse">
+      <div className="rounded-2xl border bg-card p-6 animate-pulse shadow-sm">
         <div className="h-5 bg-muted rounded w-32 mb-2" />
         <div className="h-4 bg-muted rounded w-48 mb-6" />
         <div className="h-48 bg-muted rounded" />
@@ -60,14 +60,14 @@ export function ChartCard({
   const hasData = data && data.length > 0;
 
   return (
-    <div className="bg-background rounded-lg border p-6">
+    <div className="rounded-2xl border bg-card p-6 shadow-sm">
       <div className="mb-4">
         <h3 className="text-base font-semibold text-foreground">{title}</h3>
         {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
       </div>
 
       {!hasData ? (
-        <div className="h-48 bg-muted/50 rounded-lg flex items-center justify-center border border-dashed">
+        <div className="flex h-48 items-center justify-center rounded-xl border border-dashed bg-muted/40">
           <div className="text-center text-muted-foreground">
             <BarChart3 className="h-10 w-10 mx-auto mb-2 opacity-50" />
             <p className="text-sm">Sin datos disponibles</p>
@@ -80,11 +80,11 @@ export function ChartCard({
               <AreaChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="hsl(var(--secondary))" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(var(--secondary))" stopOpacity={0} />
+                    <stop offset="5%"  stopColor="hsl(var(--secondary))" stopOpacity={0.18} />
+                    <stop offset="95%" stopColor="hsl(var(--secondary))" stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
                 <XAxis
                   dataKey="label"
                   tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
@@ -112,7 +112,7 @@ export function ChartCard({
               </AreaChart>
             ) : (
               <BarChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
                 <XAxis
                   dataKey="label"
                   tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
@@ -131,8 +131,8 @@ export function ChartCard({
                 <Bar
                   dataKey="value"
                   fill="hsl(var(--secondary))"
-                  radius={[4, 4, 0, 0]}
-                  opacity={0.85}
+                  radius={[6, 6, 0, 0]}
+                  opacity={0.72}
                 />
               </BarChart>
             )}

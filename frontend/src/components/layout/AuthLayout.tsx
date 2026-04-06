@@ -12,24 +12,26 @@ export function AuthLayout({ children }: AuthLayoutProps) {
   const { t } = useTranslation();
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-background">
       {/* Simple header */}
-      <header className="border-b">
+      <header className="border-b bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="container flex h-16 items-center">
-          <Link href="/" className="flex items-center gap-2 font-semibold text-foreground">
-            <BarChart3 className="h-6 w-6 text-secondary" />
-            <span className="text-lg">{t('auth.brand')}</span>
+          <Link href="/" className="flex items-center gap-3 font-semibold text-foreground">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+              <BarChart3 className="h-4 w-4" />
+            </div>
+            <span className="text-lg tracking-tight">{t('auth.brand')}</span>
           </Link>
         </div>
       </header>
 
       {/* Centered content */}
-      <main className="flex-1 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">{children}</div>
+      <main className="flex flex-1 items-center justify-center p-6">
+        <div className="w-full max-w-md rounded-3xl border bg-card p-8 shadow-sm">{children}</div>
       </main>
 
       {/* Simple footer */}
-      <footer className="border-t py-4">
+      <footer className="border-t bg-background py-4">
         <div className="container flex justify-center gap-6 text-sm text-muted-foreground">
           <a href="#" className="hover:text-foreground transition-colors">
             {t('auth.footer.privacy')}

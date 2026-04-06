@@ -62,7 +62,7 @@ export function LoginPage() {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h1 className="text-2xl font-bold text-foreground mb-2">
+        <h1 className="mb-2 text-2xl font-semibold tracking-tight text-foreground">
           {t('login.title')}
         </h1>
         <p className="text-muted-foreground">
@@ -72,7 +72,7 @@ export function LoginPage() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
-          <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-lg p-3 text-sm">
+          <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
             {error}
           </div>
         )}
@@ -96,7 +96,7 @@ export function LoginPage() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label htmlFor="password">{t('login.form.password.label')}</Label>
-            <Link href="/forgot-password" className="text-sm text-secondary hover:text-secondary-hover">
+            <Link href="/forgot-password" className="text-sm font-medium text-muted-foreground hover:text-foreground">
               {t('login.form.password.forgot')}
             </Link>
           </div>
@@ -114,22 +114,23 @@ export function LoginPage() {
           )}
         </div>
 
-        <Button type="submit" className="w-full" disabled={loading}>
+        <Button type="submit" className="h-11 w-full" disabled={loading}>
           {loading ? t('login.actions.signingIn') : t('login.actions.signIn')}
         </Button>
       </form>
 
       <p className="text-center text-sm text-muted-foreground">
         {t('login.footer.noAccount')}{' '}
-        <Link href="/register" className="text-secondary hover:text-secondary-hover font-medium">
+        <Link href="/register" className="font-medium text-foreground underline-offset-4 hover:underline">
           {t('login.footer.createOne')}
         </Link>
       </p>
-
-      <div className="text-center text-xs text-muted-foreground border-t pt-4">
+      {/*
+      <div className="rounded-2xl border bg-muted/30 px-4 py-3 text-center text-xs text-muted-foreground">
         <p>{t('login.demo.title')}</p>
         <p>{t('login.demo.credentials')}</p>
       </div>
+      */}
     </div>
   );
 }
