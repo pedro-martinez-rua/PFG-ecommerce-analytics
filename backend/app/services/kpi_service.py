@@ -5,11 +5,12 @@ Analiza TODOS los datos del tenant sin distinción de import.
 El tenant tiene un negocio — todos sus imports son parte del mismo pool.
 """
 from datetime import date, datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, List
 import pandas as pd
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 import numpy as np
+
 
 from app.services.kpi_calculator import (
     check_data_coverage,
@@ -68,9 +69,18 @@ def load_orders(
     db: Session,
     tenant_id: str,
     period_start: date,
-    period_end: date
+    period_end: date,
+    import_ids: Optional[List[str]] = None,
 ) -> pd.DataFrame:
-    result = db.execute(text("""
+    params = {
+        "tenant_id": tenant_id,
+        "date_from": period_start,
+        "date_to": period_end,
+    }
+
+    import_filter = _build_import_filter_sql("import_id", import_ids, params)
+
+    result = db.execute(text(f"""
         SELECT
             id::text, external_id, order_date,
             total_amount::float, discount_amount::float,
@@ -85,11 +95,9 @@ def load_orders(
         WHERE tenant_id = :tenant_id
           AND order_date >= :date_from
           AND order_date <= :date_to
-    """), {
-        "tenant_id": tenant_id,
-        "date_from":  period_start,
-        "date_to":    period_end
-    })
+          {import_filter}
+    """), params)
+
     rows = result.fetchall()
     return pd.DataFrame(rows, columns=list(result.keys())) if rows else pd.DataFrame()
 
@@ -97,14 +105,22 @@ def load_order_lines(
     db: Session,
     tenant_id: str,
     period_start: date,
-    period_end: date
+    period_end: date,
+    import_ids: Optional[List[str]] = None,
 ) -> pd.DataFrame:
     """
     Carga líneas de pedido del periodo.
-    Join con orders para filtrar por fecha.
-    Incluye COGS de products si está disponible via FK.
+    Join con orders para filtrar por fecha e import_ids del dashboard.
     """
-    result = db.execute(text("""
+    params = {
+        "tenant_id": tenant_id,
+        "date_from": period_start,
+        "date_to": period_end,
+    }
+
+    import_filter = _build_import_filter_sql("o.import_id", import_ids, params)
+
+    result = db.execute(text(f"""
         SELECT
             ol.id::text,
             ol.order_id::text,
@@ -118,31 +134,40 @@ def load_order_lines(
             ol.line_total::float,
             ol.is_primary_item,
             ol.is_refunded,
-            o.order_date
+            o.order_date,
+            o.import_id::text
         FROM order_lines ol
         INNER JOIN orders o ON ol.order_id = o.id
         LEFT JOIN products p ON ol.product_id = p.id
         WHERE ol.tenant_id = :tenant_id
           AND o.order_date >= :date_from
           AND o.order_date <= :date_to
-    """), {
-        "tenant_id": tenant_id,
-        "date_from":  period_start,
-        "date_to":    period_end
-    })
+          {import_filter}
+    """), params)
+
     rows = result.fetchall()
     return pd.DataFrame(rows, columns=list(result.keys())) if rows else pd.DataFrame()
 
-def load_all_orders(db: Session, tenant_id: str) -> pd.DataFrame:
-    result = db.execute(text("""
+def load_all_orders(
+    db: Session,
+    tenant_id: str,
+    import_ids: Optional[List[str]] = None,
+) -> pd.DataFrame:
+    params = {"tenant_id": tenant_id}
+    import_filter = _build_import_filter_sql("import_id", import_ids, params)
+
+    result = db.execute(text(f"""
         SELECT
             id::text,
             COALESCE(customer_reference, customer_id::text) AS customer_id,
             order_date,
-            total_amount::float
+            total_amount::float,
+            import_id::text
         FROM orders
         WHERE tenant_id = :tenant_id
-    """), {"tenant_id": tenant_id})
+          {import_filter}
+    """), params)
+
     rows = result.fetchall()
     return pd.DataFrame(rows, columns=list(result.keys())) if rows else pd.DataFrame()
 
@@ -220,13 +245,29 @@ def _make_serializable(obj):
         return obj.tolist()
     return obj
 
+def _clean_import_ids(import_ids: Optional[List[str]]) -> list[str]:
+    return [str(x) for x in (import_ids or []) if x]
+
+
+def _build_import_filter_sql(
+    field_name: str,
+    import_ids: Optional[List[str]],
+    params: dict
+) -> str:
+    cleaned = _clean_import_ids(import_ids)
+    if not cleaned:
+        return ""
+    params["import_ids"] = cleaned
+    return f" AND {field_name} = ANY(CAST(:import_ids AS uuid[])) "
+
 # CÁLCULO PRINCIPAL
 def compute_kpis(
     db: Session,
     tenant_id: str,
     period: Optional[str] = "last_30",
     date_from: Optional[str] = None,
-    date_to: Optional[str] = None
+    date_to: Optional[str] = None,
+    import_ids: Optional[List[str]] = None,
 ) -> dict:
     """
     Calcula todos los KPIs disponibles para el tenant y periodo.
@@ -239,10 +280,10 @@ def compute_kpis(
     granularity = "month" if delta_days > 90 else "day"
 
     # Datos
-    orders_df      = load_orders(db, tenant_id, p_start, p_end)
-    prev_orders_df = load_orders(db, tenant_id, prev_start, prev_end)
-    lines_df       = load_order_lines(db, tenant_id, p_start, p_end)
-    all_orders_df  = load_all_orders(db, tenant_id)
+    orders_df      = load_orders(db, tenant_id, p_start, p_end, import_ids=import_ids)
+    prev_orders_df = load_orders(db, tenant_id, prev_start, prev_end, import_ids=import_ids)
+    lines_df       = load_order_lines(db, tenant_id, p_start, p_end, import_ids=import_ids)
+    all_orders_df  = load_all_orders(db, tenant_id, import_ids=import_ids)
 
     # Cobertura
     coverage = check_data_coverage(orders_df, lines_df)
@@ -365,6 +406,7 @@ def compute_kpis(
         "period":       p_label,
         "date_from":    p_start.isoformat(),
         "date_to":      p_end.isoformat(),
+        "import_ids":   _clean_import_ids(import_ids),
         "data_coverage": coverage,
         "kpis":   kpis,
         "charts": charts,

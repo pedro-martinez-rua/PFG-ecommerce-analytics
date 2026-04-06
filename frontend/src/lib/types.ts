@@ -227,6 +227,9 @@ export interface BackendImport {
   data_date_to: string | null;
   orders_loaded: number;
   lines_loaded: number;
+  main_reason?: string | null;
+  user_message?: string | null;
+  has_warnings?: boolean;
 }
 
 export interface AvailableRange {
@@ -312,4 +315,46 @@ export interface UploadImportResult {
   main_reason?: string | null;
   user_message?: string | null;
   suggestions: string[];
+}
+
+
+export interface ImportPreviewResponse {
+  import_id: string;
+  mode: "raw" | "normalized";
+  detected_type: string;
+  row_count: number;
+  columns: string[];
+  rows: Record<string, any>[];
+  warnings?: string[];
+}
+
+export interface MappingSuggestionItem {
+  source_column: string;
+  canonical_field?: string | null;
+  confidence: number;
+  method: string;
+  inferred_type?: string | null;
+  null_ratio?: number | null;
+}
+
+export interface MappingSuggestionResponse {
+  import_id: string;
+  sheet_name: string;
+  upload_type: string;
+  confidence: number;
+  requires_review: boolean;
+  required_fields_missing: string[];
+  suggestions: MappingSuggestionItem[];
+  raw_columns: string[];
+  profiler_warnings: string[];
+}
+
+export interface MappingApplyResponse {
+  import_id: string;
+  sheet_name: string;
+  status: string;
+  valid_rows: number;
+  invalid_rows: number;
+  skipped_rows: number;
+  detected_type: string;
 }

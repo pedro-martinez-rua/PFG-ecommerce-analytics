@@ -17,6 +17,10 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 class CreateReportRequest(BaseModel):
     dashboard_id: str
+    # Fechas opcionales: si se pasan, sobreescriben las del dashboard guardado.
+    # Permite guardar informes de rangos filtrados distintos al rango original.
+    date_from: Optional[str] = None
+    date_to:   Optional[str] = None
 
 
 @router.post("/", status_code=201)
@@ -27,6 +31,7 @@ def create_report(
 ):
     """
     Genera un snapshot del dashboard con KPIs e insights de Groq.
+    Si se pasan date_from/date_to, se usan en lugar de las fechas del dashboard.
     """
     dashboard = db.query(Dashboard).filter_by(
         id=data.dashboard_id,
@@ -36,16 +41,18 @@ def create_report(
     if not dashboard:
         raise HTTPException(status_code=404, detail="Dashboard no encontrado")
 
-    # Calcular KPIs
+    # Prioridad: fechas del request > fechas del dashboard > all
+    effective_from = data.date_from or (str(dashboard.date_from) if dashboard.date_from else None)
+    effective_to   = data.date_to   or (str(dashboard.date_to)   if dashboard.date_to   else None)
+
     kpi_data = compute_kpis(
         db=db,
         tenant_id=str(current_user.tenant_id),
-        period="custom" if dashboard.date_from else "all",
-        date_from=str(dashboard.date_from) if dashboard.date_from else None,
-        date_to=str(dashboard.date_to) if dashboard.date_to else None,
+        period="custom" if effective_from else "all",
+        date_from=effective_from,
+        date_to=effective_to,
     )
 
-    # Generar insights con Groq
     insights_text = generate_insights(
         kpis=kpi_data["kpis"],
         coverage=kpi_data["data_coverage"],
@@ -57,8 +64,8 @@ def create_report(
         tenant_id=current_user.tenant_id,
         dashboard_id=dashboard.id,
         dashboard_name=dashboard.name,
-        date_from=str(dashboard.date_from) if dashboard.date_from else None,
-        date_to=str(dashboard.date_to) if dashboard.date_to else None,
+        date_from=effective_from,
+        date_to=effective_to,
         kpi_snapshot=kpi_data["kpis"],
         insights=insights_text,
     )
