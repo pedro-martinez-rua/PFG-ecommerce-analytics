@@ -73,6 +73,20 @@ export function useAuth() {
   }, []);
 
   const clearError = useCallback(() => setError(null), []);
+  
+  const updateMe = useCallback(async (payload: { full_name: string }) => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const result = await authService.updateMe(payload)
+      if (result.success) refreshSession()
+      else setError(result.error || 'No se pudo actualizar el perfil')
+      return result
+    } finally {
+      setLoading(false)
+    }
+  }, [refreshSession])
 
   return {
     session,
@@ -87,6 +101,7 @@ export function useAuth() {
     logout,
     forgotPassword,
     clearError,
+    updateMe,
     hasRole: (role: UserRole) => session?.user.role === role,
   };
 }

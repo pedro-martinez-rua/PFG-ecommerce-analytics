@@ -16,20 +16,84 @@ import {
   AlertCircle,
 } from 'lucide-react';
 
+import { authService } from '@/lib/auth'
+
 export function ProfilePage() {
   const { t } = useTranslation();
 
   const { user, tenant, isAdmin } = useAuth();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [fullName, setFullName] = useState(user?.fullName || '')
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileSuccess, setProfileSuccess] = useState<string | null>(null)
 
   const handleSave = async () => {
-    setSaving(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
-  };
+    setProfileError(null)
+    setProfileSuccess(null)
+
+    const session = authService.getSession()
+    const token = session?.token
+
+    if (!token) {
+      setProfileError('Sesión no válida. Inicia sesión de nuevo')
+      return
+    }
+
+    const trimmedName = fullName.trim()
+
+    if (!trimmedName) {
+      setProfileError('El nombre completo es obligatorio')
+      return
+    }
+
+    if (trimmedName.length < 2) {
+      setProfileError('El nombre completo debe tener al menos 2 caracteres')
+      return
+    }
+
+    setSaving(true)
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/me`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          full_name: trimmedName,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        let errorMessage = 'No se pudo actualizar el perfil'
+
+        if (typeof data.detail === 'string') {
+          errorMessage = data.detail
+        } else if (Array.isArray(data.detail) && data.detail.length > 0) {
+          errorMessage = data.detail.map((err: any) => err.msg).join(' · ')
+        }
+
+        throw new Error(errorMessage)
+      }
+
+      profileError && setProfileError(null)
+      setProfileSuccess('Perfil actualizado correctamente')
+      setSaved(true)
+      setTimeout(() => {
+        setSaved(false)
+        setProfileSuccess(null)
+      }, 3000)
+
+    } catch (error: any) {
+      setProfileError(error.message || 'No se pudo actualizar el perfil')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const roleLabel =
     user?.role === 'admin'
@@ -41,6 +105,103 @@ export function ProfilePage() {
         defaultValue: tenant.plan.charAt(0).toUpperCase() + tenant.plan.slice(1),
       })
     : t('profile.company.plans.free');
+
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmNewPassword, setConfirmNewPassword] = useState('')
+
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
+
+  const handleChangePassword = async () => {
+    setPasswordError(null)
+    setPasswordSuccess(null)
+
+    const session = authService.getSession()
+    const token = session?.token
+
+    if (!token) {
+      setPasswordError('Sesión no válida. Inicia sesión de nuevo')
+      return
+    }
+
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+      setPasswordError('Todos los campos son obligatorios')
+      return
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setPasswordError('Las contraseñas no coinciden')
+      return
+    }
+
+    if (currentPassword === newPassword) {
+      setPasswordError('La nueva contraseña no puede ser igual a la actual')
+      return
+    }
+
+    // 👇 MÉTELO AQUÍ
+    if (newPassword.length < 8) {
+      setPasswordError('La nueva contraseña debe tener al menos 8 caracteres')
+      return
+    }
+
+    if (!/[A-Z]/.test(newPassword)) {
+      setPasswordError('La nueva contraseña debe incluir al menos una mayúscula')
+      return
+    }
+
+    if (!/[a-z]/.test(newPassword)) {
+      setPasswordError('La nueva contraseña debe incluir al menos una minúscula')
+      return
+    }
+
+    if (!/\d/.test(newPassword)) {
+      setPasswordError('La nueva contraseña debe incluir al menos un número')
+      return
+    }
+
+    setPasswordLoading(true)
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/me/password`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+          confirm_password: confirmNewPassword,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        let errorMessage = 'No se pudo actualizar la contraseña'
+
+        if (typeof data.detail === 'string') {
+          errorMessage = data.detail
+        } else if (Array.isArray(data.detail) && data.detail.length > 0) {
+          errorMessage = data.detail.map((err: any) => err.msg).join(' · ')
+        }
+
+        throw new Error(errorMessage)
+      }
+
+      setPasswordSuccess('Contraseña actualizada correctamente')
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmNewPassword('')
+    } catch (error: any) {
+      setPasswordError(error.message || 'No se pudo actualizar la contraseña')
+    } finally {
+      setPasswordLoading(false)
+    }
+  }
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -90,7 +251,7 @@ export function ProfilePage() {
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="fullName">{t('profile.fields.fullName')}</Label>
-                  <Input id="fullName" defaultValue={user?.fullName} />
+                  <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)}/>
                 </div>
 
                 <div className="space-y-2">
@@ -180,22 +341,62 @@ export function ProfilePage() {
 
             <div className="space-y-4 max-w-md">
               <div className="space-y-2">
-                <Label htmlFor="currentPassword">{t('profile.securitySection.currentPassword')}</Label>
-                <Input id="currentPassword" type="password" />
+                <Label htmlFor="currentPassword">
+                  {t('profile.securitySection.currentPassword')}
+                </Label>
+                <Input
+                  id="currentPassword"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  autoComplete="current-password"
+                />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="newPassword">{t('profile.securitySection.newPassword')}</Label>
-                <Input id="newPassword" type="password" />
+                <Label htmlFor="newPassword">
+                  {t('profile.securitySection.newPassword')}
+                </Label>
+                <Input
+                  id="newPassword"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirmNewPassword">{t('profile.securitySection.confirmNewPassword')}</Label>
-                <Input id="confirmNewPassword" type="password" />
+                <Label htmlFor="confirmNewPassword">
+                  {t('profile.securitySection.confirmNewPassword')}
+                </Label>
+                <Input
+                  id="confirmNewPassword"
+                  type="password"
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
               </div>
+
+              {passwordError && (
+                <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {passwordError}
+                </div>
+              )}
+
+              {passwordSuccess && (
+                <div className="rounded-lg border border-success/20 bg-success/10 px-3 py-2 text-sm text-success">
+                  {passwordSuccess}
+                </div>
+              )}
 
               <div className="pt-4">
-                <Button>{t('profile.securitySection.updatePassword')}</Button>
+                <Button onClick={handleChangePassword} disabled={passwordLoading}>
+                  {passwordLoading
+                    ? 'Actualizando...'
+                    : t('profile.securitySection.updatePassword')}
+                </Button>
               </div>
             </div>
           </div>
@@ -212,7 +413,9 @@ export function ProfilePage() {
                     {t('profile.securitySection.currentSession')}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {t('profile.securitySection.lastActive', { value: t('profile.securitySection.justNow') })}
+                    {t('profile.securitySection.lastActive', {
+                      value: t('profile.securitySection.justNow'),
+                    })}
                   </p>
                 </div>
                 <span className="text-xs bg-success/10 text-success px-2 py-1 rounded">
