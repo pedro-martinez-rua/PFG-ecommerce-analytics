@@ -62,11 +62,11 @@ function Section({
   emptyAction?: { label: string; href: string };
 }) {
   return (
-    <div className="bg-background border rounded-xl overflow-hidden">
+    <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
       {/* Header de sección */}
-      <div className="flex items-center justify-between px-5 py-4 border-b">
+      <div className="flex items-center justify-between border-b bg-muted/20 px-5 py-4">
         <div className="flex items-center gap-2">
-          <Icon className="h-4 w-4 text-secondary" />
+          <Icon className="h-4 w-4 text-foreground/80" />
           <h2 className="font-semibold text-foreground">{title}</h2>
           {count > 0 && (
             <span className="bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full">
@@ -75,7 +75,7 @@ function Section({
           )}
         </div>
         {count > 0 && (
-          <Link href={href} className="flex items-center gap-1 text-xs text-secondary hover:text-secondary">
+          <Link href={href} className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
             Ver todos <ArrowRight className="h-3 w-3" />
           </Link>
         )}
@@ -174,7 +174,7 @@ export function OverviewPage() {
     <div className="space-y-8">
 
       {/* ── Bienvenida ───────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col gap-4 rounded-2xl border bg-card p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground mb-1">
             {firstName ? `Hola, ${firstName}` : 'Bienvenido'}
@@ -222,16 +222,16 @@ export function OverviewPage() {
 
       {/* ── Cómo funciona (solo si no hay datos aún) ─────────────── */}
       {!loading && !hasAnyData && (
-        <div className="bg-gradient-to-br from-secondary/5 to-muted/50 border rounded-xl p-6">
+        <div className="rounded-2xl border bg-card p-6 shadow-sm">
           <div className="flex items-center gap-2 mb-6">
-            <BookOpen className="h-4 w-4 text-secondary" />
+            <BookOpen className="h-4 w-4 text-foreground/80" />
             <h2 className="font-semibold">¿Cómo funciona CommerceIQ?</h2>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {STEPS.map(s => {
               const Icon = s.icon;
               return (
-                <div key={s.step} className="bg-background rounded-lg p-4 border">
+                <div key={s.step} className="rounded-2xl border bg-background p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm">
                   <div className="flex items-center gap-2 mb-3">
                     <span className="flex items-center justify-center w-6 h-6 rounded-full bg-secondary text-white text-xs font-bold">
                       {s.step}
@@ -288,13 +288,15 @@ export function OverviewPage() {
             const Icon = card.icon;
             return (
               <Link key={card.label} href={card.href} className="block">
-                <div className="bg-background border rounded-xl p-4 hover:shadow-card transition-shadow">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs text-muted-foreground">{card.label}</p>
-                    <Icon className="h-4 w-4 text-muted-foreground" />
+                <div className="rounded-2xl border bg-card p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">{card.label}</p>
+                    <div className="rounded-lg bg-muted p-2">
+                      <Icon className="h-4 w-4 text-foreground/80" />
+                    </div>
                   </div>
-                  <p className="text-2xl font-bold text-foreground">{card.value}</p>
-                  <p className="text-xs text-muted-foreground mt-1 truncate">{card.sub}</p>
+                  <p className="text-3xl font-semibold tracking-tight text-foreground">{card.value}</p>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">{card.sub}</p>
                 </div>
               </Link>
             );
@@ -321,9 +323,9 @@ export function OverviewPage() {
                 <Link
                   key={imp.id}
                   href="/app/imports"
-                  className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors"
+                  className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-muted/40"
                 >
-                  <div className="bg-muted rounded p-1.5">
+                  <div className="rounded-lg bg-muted p-2">
                     <FileText className="h-3.5 w-3.5 text-muted-foreground" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -361,9 +363,9 @@ export function OverviewPage() {
                 <Link
                   key={d.id}
                   href={`/app/dashboards/${d.id}`}
-                  className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors"
+                  className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-muted/40"
                 >
-                  <div className="bg-muted rounded p-1.5">
+                  <div className="rounded-lg bg-muted p-2">
                     <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -405,9 +407,9 @@ export function OverviewPage() {
                 <Link
                   key={r.id}
                   href="/app/reports"
-                  className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors"
+                  className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-muted/40"
                 >
-                  <div className="bg-muted rounded p-1.5">
+                  <div className="rounded-lg bg-muted p-2">
                     <Sparkles className="h-3.5 w-3.5 text-secondary" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -431,7 +433,7 @@ export function OverviewPage() {
 
       {/* ── Accesos rápidos (siempre visibles si hay datos) ───────── */}
       {!loading && hasAnyData && (
-        <div className="bg-gradient-to-br from-secondary/5 to-muted/50 border rounded-xl p-6">
+        <div className="rounded-2xl border bg-card p-6 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp className="h-4 w-4 text-secondary" />
             <h2 className="font-semibold">Acciones rápidas</h2>
@@ -441,8 +443,8 @@ export function OverviewPage() {
               const Icon = s.icon;
               return (
                 <Link key={s.step} href={s.href}>
-                  <div className="flex items-center gap-3 bg-background rounded-lg p-3 border hover:shadow-card transition-shadow cursor-pointer">
-                    <div className="bg-secondary/10 rounded-lg p-2">
+                  <div className="flex cursor-pointer items-center gap-3 rounded-2xl border bg-background p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm">
+                    <div className="rounded-xl bg-muted p-2">
                       <Icon className="h-4 w-4 text-secondary" />
                     </div>
                     <div>

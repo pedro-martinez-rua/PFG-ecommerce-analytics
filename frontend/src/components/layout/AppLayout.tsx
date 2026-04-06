@@ -85,10 +85,10 @@ export function AppLayout({ children }: AppLayoutProps) {
     .toUpperCase() || 'U';
 
   return (
-    <div className="min-h-screen flex flex-col bg-muted/30">
+    <div className="min-h-screen flex flex-col bg-background">
 
       {/* ── Top Bar ────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 h-16 border-b bg-background shadow-subtle">
+      <header className="sticky top-0 z-50 h-16 border-b bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex h-full items-center justify-between px-4 lg:px-6">
 
           {/* Izquierda */}
@@ -102,7 +102,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             </button>
 
             <Link href="/app" className="flex items-center gap-2.5 font-bold text-foreground">
-              <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary shadow-sm">
                 <BarChart3 className="h-4.5 w-4.5 text-primary-foreground" style={{ width: 18, height: 18 }} />
               </div>
               <span className="text-base hidden sm:inline tracking-tight">{t('app.brand')}</span>
@@ -136,7 +136,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-2 pl-1.5">
                   {/* Avatar con iniciales */}
-                  <div className="h-8 w-8 rounded-full bg-secondary/15 border border-secondary/20 flex items-center justify-center text-secondary text-xs font-bold">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full border bg-muted text-foreground text-xs font-semibold">
                     {initials}
                   </div>
                   <span className="hidden sm:inline text-sm max-w-[120px] truncate text-foreground">
@@ -176,7 +176,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
         {/* ── Sidebar ──────────────────────────────────────── */}
         <aside
-          className={`fixed lg:sticky top-16 z-40 h-[calc(100vh-4rem)] w-60 border-r bg-background transition-transform duration-200 ${
+          className={`fixed lg:sticky top-16 z-40 h-[calc(100vh-4rem)] w-64 border-r bg-sidebar transition-transform duration-200 ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
           }`}
         >
@@ -200,13 +200,13 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all duration-150 ${
+                    className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-all duration-150 ${
                       active
-                        ? 'bg-secondary/10 text-secondary font-semibold border-l-2 border-secondary pl-[10px]'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        ? 'bg-accent text-foreground font-medium shadow-sm'
+                        : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground'
                     }`}
                   >
-                    <item.icon className={`h-4 w-4 flex-shrink-0 ${active ? 'text-secondary' : ''}`} />
+                    <item.icon className={`h-4 w-4 flex-shrink-0 ${active ? 'text-foreground' : 'text-muted-foreground'}`} />
                     <span>{t(item.labelKey)}</span>
                   </Link>
                 );
@@ -215,7 +215,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
             {/* Plan badge */}
             <div className="px-3 pt-3 border-t mt-2">
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2 shadow-sm">
                 <div className="h-1.5 w-1.5 rounded-full bg-success" />
                 <p className="text-xs text-muted-foreground">{planLabel}</p>
               </div>
@@ -225,7 +225,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
         {/* ── Main Content ─────────────────────────────────── */}
         <main className="flex-1 overflow-auto min-w-0">
-          <div className="container py-6 lg:py-8 max-w-6xl">{children}</div>
+          <div className="container max-w-6xl py-6 lg:py-8">{children}</div>
         </main>
       </div>
 

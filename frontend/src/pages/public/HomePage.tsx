@@ -39,10 +39,10 @@ export function HomePage() {
   return (
     <div className="flex flex-col">
       {/* Hero */}
-      <section className="py-20 lg:py-28">
+      <section className="relative overflow-hidden py-20 lg:py-28">
         <div className="container">
           <div className="max-w-3xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 bg-secondary/10 text-secondary px-4 py-1.5 rounded-full text-sm font-medium mb-6">
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border bg-background/80 px-4 py-1.5 text-sm font-medium text-muted-foreground shadow-sm">
               <Sparkles className="h-4 w-4" />
               {t('home.hero.badge')}
             </div>
@@ -50,7 +50,7 @@ export function HomePage() {
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-foreground mb-6">
               {t('home.hero.title')}
               <br />
-              <span className="text-secondary">{t('home.hero.highlight')}</span>
+              <span className="text-foreground">{t('home.hero.highlight')}</span>
             </h1>
 
             <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
@@ -103,7 +103,7 @@ export function HomePage() {
           <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
             {howItWorks.map((step, index) => (
               <div key={step} className="text-center">
-                <div className="text-4xl font-bold text-blue-900 text-secondary/20 mb-4">
+                <div className="mb-4 text-4xl font-bold tracking-tight text-secondary/20">
                   {`0${index + 1}`}
                 </div>
                 <h3 className="text-lg font-semibold text-foreground mb-2">
@@ -132,9 +132,9 @@ export function HomePage() {
 
           <div className="grid md:grid-cols-3 gap-8">
             {benefits.map(({ icon: Icon, key }) => (
-              <div key={key} className="bg-background rounded-lg border p-6">
-                <div className="bg-secondary/10 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
-                  <Icon className="h-6 w-6 text-secondary" />
+              <div key={key} className="rounded-2xl border bg-card p-6 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
+                  <Icon className="h-6 w-6 text-foreground/80" />
                 </div>
                 <h3 className="text-lg font-semibold text-foreground mb-2">
                   {t(`home.benefits.items.${key}.title`)}
@@ -162,9 +162,9 @@ export function HomePage() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map(({ icon: Icon, key }) => (
-              <div key={key} className="p-6 rounded-lg border bg-background">
-                <div className="bg-muted w-10 h-10 rounded-lg flex items-center justify-center mb-4">
-                  <Icon className="h-5 w-5 text-secondary text-muted-foreground" />
+              <div key={key} className="rounded-2xl border bg-card p-6 shadow-sm">
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
+                  <Icon className="h-5 w-5 text-foreground/80" />
                 </div>
                 <h3 className="font-semibold text-foreground mb-2">
                   {t(`home.features.items.${key}.title`)}
@@ -181,7 +181,7 @@ export function HomePage() {
       {/* CTA */}
       <section className="py-20">
         <div className="container">
-          <div className="bg-primary rounded-2xl p-8 md:p-12 text-center">
+          <div className="rounded-3xl bg-primary p-8 text-center shadow-sm md:p-12">
             <h2 className="text-2xl md:text-3xl font-semibold text-primary-foreground mb-4">
               {t('home.cta.title')}
             </h2>
@@ -199,13 +199,7 @@ export function HomePage() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="
-                    min-w-[160px]
-                    border-primary-foreground/20
-                    text-blue-900
-                    hover:text-blue-900
-                    hover:bg-blue-50
-                  "
+                  className="min-w-[160px] border-primary-foreground/20 bg-transparent text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
                 >
                   {t('home.cta.secondary')}
                 </Button>

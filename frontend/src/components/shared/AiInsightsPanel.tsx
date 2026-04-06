@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 
 interface AiInsightsPanelProps {
   insights?: Insight[];
-  rawText?: string;        // ← texto markdown de Groq
+  rawText?: string;     
   loading?: boolean;
   onClose: () => void;
 }
@@ -22,11 +22,11 @@ export function AiInsightsPanel({ insights = [], rawText, loading, onClose }: Ai
 
   const getInsightColor = (type: Insight['type']) => {
     switch (type) {
-      case 'opportunity':    return 'text-success bg-success/10';
-      case 'warning':        return 'text-warning bg-warning/10';
-      case 'trend':          return 'text-secondary bg-secondary/10';
-      case 'recommendation': return 'text-foreground bg-muted';
-      default:               return 'text-muted-foreground bg-muted';
+      case 'opportunity':    return 'bg-success/10 text-success';
+      case 'warning':        return 'bg-warning/10 text-warning';
+      case 'trend':          return 'bg-secondary/10 text-secondary';
+      case 'recommendation': return 'bg-muted text-foreground';
+      default:               return 'bg-muted text-muted-foreground';
     }
   };
 
@@ -44,7 +44,7 @@ export function AiInsightsPanel({ insights = [], rawText, loading, onClose }: Ai
       // Ítems de lista
       if (line.startsWith('* ') || line.match(/^\d+\. /)) {
         return (
-          <p key={i} className="text-sm text-muted-foreground mb-2 pl-4 border-l-2 border-muted">
+          <p key={i} className="mb-2 border-l border-border pl-4 text-sm leading-relaxed text-muted-foreground">
             {line.replace(/^\* /, '').replace(/^\d+\. /, '')}
           </p>
         );
@@ -68,12 +68,14 @@ export function AiInsightsPanel({ insights = [], rawText, loading, onClose }: Ai
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 w-full max-w-md bg-background border-l shadow-modal z-50 animate-slide-in-right">
+    <div className="fixed inset-y-0 right-0 z-50 w-full max-w-lg animate-slide-in-right border-l bg-card/95 shadow-2xl backdrop-blur-xl">
       <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-secondary" />
+        <div className="flex items-center justify-between border-b bg-muted/20 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/10">
+              <Sparkles className="h-5 w-5 text-secondary" />
+            </div>
             <div>
               <h2 className="text-lg font-semibold">Análisis IA</h2>
               <p className="text-sm text-muted-foreground">Interpretación automática de tus datos</p>
@@ -85,7 +87,7 @@ export function AiInsightsPanel({ insights = [], rawText, loading, onClose }: Ai
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 overflow-auto px-5 py-4">
           {loading ? (
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
@@ -107,9 +109,9 @@ export function AiInsightsPanel({ insights = [], rawText, loading, onClose }: Ai
                 const Icon = getInsightIcon(insight.type);
                 const colorClasses = getInsightColor(insight.type);
                 return (
-                  <div key={insight.id} className="border rounded-lg p-4">
+                  <div key={insight.id} className="rounded-2xl border bg-background p-4 shadow-sm">
                     <div className="flex items-start gap-3">
-                      <div className={`rounded-full p-2 ${colorClasses}`}>
+                      <div className={`rounded-xl p-2 ${colorClasses}`}>
                         <Icon className="h-4 w-4" />
                       </div>
                       <div className="flex-1">
