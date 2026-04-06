@@ -4,15 +4,19 @@ import { useTranslation } from 'react-i18next';
 
 import { Link } from '@/components/Link';
 import { Button } from '@/components/ui/button';
-import { BarChart3, Menu, X, Languages, Check } from 'lucide-react';
+import { BarChart3, Menu, X } from 'lucide-react';
+// import { Languages, Check } from 'lucide-react'; // i18n disabled
+
+/*
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+*/
 
-type LangOption = { code: 'es' | 'en'; label: string };
+// type LangOption = { code: 'es' | 'en'; label: string };
 
 const navLinks = [
   { href: '/', key: 'nav.product' },
@@ -23,9 +27,10 @@ const navLinks = [
 
 export function Navbar() {
   const { pathname } = useLocation();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  /*
   const langOptions: LangOption[] = useMemo(
     () => [
       { code: 'es', label: 'Español' },
@@ -40,10 +45,12 @@ export function Navbar() {
     if (lng === currentLang) return;
     await i18n.changeLanguage(lng);
   };
+  */
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <nav className="container flex h-16 items-center justify-between">
+        
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 font-semibold text-foreground">
           <BarChart3 className="h-6 w-6 text-secondary" />
@@ -67,7 +74,9 @@ export function Navbar() {
 
         {/* Desktop Right */}
         <div className="hidden md:flex items-center gap-3">
-          {/* Language */}
+
+          {/* Language selector disabled */}
+          {/*
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2">
@@ -86,12 +95,14 @@ export function Navbar() {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          */}
 
           <Link href="/login">
             <Button variant="ghost" size="sm">
               {t('nav.login')}
             </Button>
           </Link>
+
           <Link href="/register">
             <Button size="sm">{t('nav.register')}</Button>
           </Link>
@@ -111,6 +122,7 @@ export function Navbar() {
       {mobileMenuOpen && (
         <div className="md:hidden border-t bg-background">
           <div className="container py-4 space-y-4">
+
             {navLinks.map((link) => (
               <Link
                 key={link.href}
@@ -122,7 +134,8 @@ export function Navbar() {
               </Link>
             ))}
 
-            {/* Mobile Language */}
+            {/* Mobile Language disabled */}
+            {/*
             <div className="pt-4 border-t">
               <p className="text-xs text-muted-foreground mb-2 flex items-center gap-2">
                 <Languages className="h-4 w-4" />
@@ -143,6 +156,7 @@ export function Navbar() {
                 </Button>
               </div>
             </div>
+            */}
 
             <div className="pt-4 border-t flex flex-col gap-2">
               <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
@@ -150,10 +164,12 @@ export function Navbar() {
                   {t('nav.login')}
                 </Button>
               </Link>
+
               <Link href="/register" onClick={() => setMobileMenuOpen(false)}>
                 <Button className="w-full">{t('nav.register')}</Button>
               </Link>
             </div>
+
           </div>
         </div>
       )}

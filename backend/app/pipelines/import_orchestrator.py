@@ -71,7 +71,7 @@ def run_import(
     filename: str,
     file_content: bytes
 ) -> dict:
-    file_size   = len(file_content)
+    file_size = len(file_content)
     file_format = "xlsx" if filename.lower().endswith((".xlsx", ".xls")) else "csv"
 
     import_record = Import(
@@ -89,223 +89,345 @@ def run_import(
     try:
         sheets = parse_file(file_content, filename)
     except ValueError as e:
-        import_record.status        = "failed"
+        import_record.status = "failed"
         import_record.error_message = str(e)
-        import_record.completed_at  = datetime.now(timezone.utc)
+        import_record.completed_at = datetime.now(timezone.utc)
         db.commit()
         return _failed_response(import_id, filename, str(e))
 
+    return _process_parsed_sheets(db, tenant_id, import_record, sheets)
+
+
+def reprocess_import_with_mapping(
+    db: Session,
+    tenant_id: str,
+    import_id: str,
+    sheet_name: str | None,
+    upload_type: str | None,
+    mapping: dict[str, str | None],
+) -> dict:
+    import_record = db.query(Import).filter_by(id=import_id, tenant_id=tenant_id).first()
+    if not import_record:
+        raise ValueError("Import no encontrado")
+
+    # 1) Leer primero los datos raw. Son la fuente para poder reprocesar.
+    raw_rows = (
+        db.query(RawUpload)
+        .filter_by(import_id=import_id, tenant_id=tenant_id)
+        .order_by(RawUpload.sheet_id.asc(), RawUpload.row_index.asc())
+        .all()
+    )
+    if not raw_rows:
+        raise ValueError("No hay datos raw para reprocesar este import")
+
+    grouped: dict[str, list[dict]] = {}
+    for row in raw_rows:
+        key = row.filename or str(row.sheet_id) or import_record.filename
+        grouped.setdefault(key, []).append(dict(row.raw_data or {}))
+
+    parsed_sheets: list[ParsedSheet] = []
+    for current_sheet_name, rows in grouped.items():
+        if sheet_name and current_sheet_name != sheet_name:
+            continue
+
+        df = pd.DataFrame(rows)
+        df = df.where(pd.notna(df), None)
+
+        parsed_sheets.append(
+            ParsedSheet(
+                sheet_name=current_sheet_name,
+                dataframe=df,
+                source_format=import_record.file_format,
+                row_count=len(df),
+                column_count=len(df.columns),
+                columns=list(df.columns),
+                warnings=[],
+            )
+        )
+
+    if not parsed_sheets:
+        raise ValueError("No se encontró la hoja solicitada para reprocesar")
+
+    # 2) Limpiar SOLO datos normalizados/derivados.
+    #    No borrar ImportSheet ni RawUpload aquí, porque forman parte
+    #    de la base raw que se usa para preview y reprocesado.
+    try:
+        db.query(OrderLine).filter_by(
+            import_id=import_id,
+            tenant_id=tenant_id,
+        ).delete(synchronize_session=False)
+
+        db.query(Order).filter_by(
+            import_id=import_id,
+            tenant_id=tenant_id,
+        ).delete(synchronize_session=False)
+
+        db.query(Customer).filter_by(
+            import_id=import_id,
+            tenant_id=tenant_id,
+        ).delete(synchronize_session=False)
+
+        db.query(Product).filter_by(
+            import_id=import_id,
+            tenant_id=tenant_id,
+        ).delete(synchronize_session=False)
+
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    # 3) Reprocesar desde los raws persistidos con el mapping manual aplicado.
+    return _process_parsed_sheets(
+        db,
+        tenant_id,
+        import_record,
+        parsed_sheets,
+        manual_mapping=mapping,
+        forced_upload_type=upload_type,
+    )
+
+def _process_parsed_sheets(
+    db: Session,
+    tenant_id: str,
+    import_record: Import,
+    sheets: list[ParsedSheet],
+    manual_mapping: dict[str, str | None] | None = None,
+    forced_upload_type: str | None = None,
+) -> dict:
     total_valid = total_invalid = total_skipped = 0
     sheet_results = []
 
     for sheet in sheets:
-        try:
-            result = _process_sheet(db, tenant_id, import_id, sheet)
-            sheet_results.append(result)
-            total_valid   += result["valid_rows"]
-            total_invalid += result["invalid_rows"]
-            total_skipped += result["skipped_rows"]
-        except Exception as e:
-            import_record.status        = "failed"
-            import_record.error_message = f"Error procesando '{sheet.sheet_name}': {str(e)[:500]}"
-            import_record.completed_at  = datetime.now(timezone.utc)
-            db.commit()
-            return _failed_response(import_id, filename, import_record.error_message)
+        result = _process_sheet(
+            db=db,
+            tenant_id=tenant_id,
+            import_id=str(import_record.id),
+            sheet=sheet,
+            manual_mapping=manual_mapping,
+            forced_upload_type=forced_upload_type,
+        )
+        sheet_results.append(result)
+        total_valid += result["valid_rows"]
+        total_invalid += result["invalid_rows"]
+        total_skipped += result["skipped_rows"]
 
     total_rows = total_valid + total_invalid + total_skipped
-    import_record.total_rows    = total_rows
-    import_record.valid_rows    = total_valid
-    import_record.invalid_rows  = total_invalid
-    import_record.skipped_rows  = total_skipped
-    import_record.status        = "completed" if total_invalid == 0 else "completed_with_errors"
-    import_record.completed_at  = datetime.now(timezone.utc)
+    import_record.total_rows = total_rows
+    import_record.valid_rows = total_valid
+    import_record.invalid_rows = total_invalid
+    import_record.skipped_rows = total_skipped
+    import_record.completed_at = datetime.now(timezone.utc)
 
     detected_types = list({r["detected_type"] for r in sheet_results})
-    import_record.detected_type        = detected_types[0] if len(detected_types) == 1 else "mixed"
-    import_record.detection_confidence = sheet_results[0]["detection_confidence"] \
-                                         if sheet_results else 0.0
+    import_record.detected_type = detected_types[0] if len(detected_types) == 1 else "mixed"
+    import_record.detection_confidence = sheet_results[0]["detection_confidence"] if sheet_results else 0.0
+    import_record.mapping_confirmed = bool(manual_mapping)
+
+    if any(r.get("requires_review") for r in sheet_results):
+        import_record.status = "needs_review"
+    elif total_invalid > 0:
+        import_record.status = "completed_with_errors"
+    else:
+        import_record.status = "completed"
     db.commit()
 
-    resolution_results = run_all_resolvers(db, tenant_id)
-
-    try:
-        from app.services.kpi_service import invalidate_kpi_cache
-        invalidate_kpi_cache(db, tenant_id)
-    except Exception:
-        pass
+    resolution_results = None
+    if import_record.status != "needs_review":
+        resolution_results = run_all_resolvers(db, tenant_id)
+        try:
+            from app.services.kpi_service import invalidate_kpi_cache
+            invalidate_kpi_cache(db, tenant_id)
+        except Exception:
+            pass
 
     return {
-        "import_id":            import_id,
-        "filename":             filename,
-        "file_format":          file_format,
-        "status":               import_record.status,
-        "total_rows":           total_rows,
-        "valid_rows":           total_valid,
-        "invalid_rows":         total_invalid,
-        "skipped_rows":         total_skipped,
-        "sheets_processed":     len(sheet_results),
-        "sheets":               sheet_results,
-        "detected_type":        import_record.detected_type,
+        "import_id": str(import_record.id),
+        "filename": import_record.filename,
+        "file_format": import_record.file_format,
+        "status": import_record.status,
+        "total_rows": total_rows,
+        "valid_rows": total_valid,
+        "invalid_rows": total_invalid,
+        "skipped_rows": total_skipped,
+        "sheets_processed": len(sheet_results),
+        "sheets": sheet_results,
+        "detected_type": import_record.detected_type,
         "detection_confidence": import_record.detection_confidence,
-        "relations_resolved":   resolution_results,
+        "relations_resolved": resolution_results,
+        "main_reason": sheet_results[0].get("main_reason") if sheet_results else None,
+        "user_message": sheet_results[0].get("user_message") if sheet_results else None,
+        "suggestions": sheet_results[0].get("suggestions", []) if sheet_results else [],
     }
 
-# PROCESAMIENTO DE UNA HOJA
+
 def _process_sheet(
     db: Session,
     tenant_id: str,
     import_id: str,
-    sheet: ParsedSheet
+    sheet: ParsedSheet,
+    manual_mapping: dict[str, str | None] | None = None,
+    forced_upload_type: str | None = None,
 ) -> dict:
     BATCH_SIZE = 1000
-
     import_sheet = ImportSheet(
         import_id=import_id,
         tenant_id=tenant_id,
         sheet_name=sheet.sheet_name,
         status="processing",
-        total_rows=sheet.row_count
+        total_rows=sheet.row_count,
     )
     db.add(import_sheet)
     db.commit()
     db.refresh(import_sheet)
     sheet_id = str(import_sheet.id)
 
+    _stage_raw_rows(db, tenant_id, import_id, sheet_id, sheet)
+
     upload_type, confidence = detect_type_with_confidence(sheet.columns, sheet.dataframe)
-    import_sheet.detected_type        = upload_type.value
+    if forced_upload_type:
+        upload_type = UploadType(forced_upload_type)
+        confidence = max(confidence, 0.8)
+
+    import_sheet.detected_type = upload_type.value
     import_sheet.detection_confidence = confidence
     db.commit()
 
-    if upload_type == UploadType.UNKNOWN or confidence < 0.3:
-        _stage_all_rows(db, tenant_id, import_id, sheet_id, sheet, upload_type.value)
-        import_sheet.status       = "completed"
-        import_sheet.valid_rows   = 0
-        import_sheet.invalid_rows = sheet.row_count
-        db.commit()
-
-        columns_found = sheet.columns[:20]
-        hint = _build_unrecognized_hint(sheet.columns)
-
-        return {
-            "sheet_name":           sheet.sheet_name,
-            "detected_type":        "unknown",
-            "detection_confidence": round(confidence, 2),
-            "valid_rows":           0,
-            "invalid_rows":         sheet.row_count,
-            "skipped_rows":         0,
-            "top_errors":           [],
-            "columns_found":        columns_found,
-            "diagnosis":            hint,
-            "file_warnings":        sheet.warnings,
-            "note": (
-                f"No se reconoció el tipo de datos de esta hoja. "
-                f"Se encontraron {len(sheet.columns)} columnas. {hint}"
-            )
-        }
-
-    saved_mapping = get_saved_mapping(db, tenant_id, upload_type.value)
-    if saved_mapping:
-        mapping = saved_mapping
+    mapping_with_confidence = infer_mapping_with_confidence(sheet.columns, sheet.dataframe)
+    if manual_mapping:
+        for source, target in manual_mapping.items():
+            mapping_with_confidence[source] = {
+                "canonical": target,
+                "confidence": 1.0 if target else 0.0,
+                "method": "manual" if target else "ignored",
+            }
+        persist_mapping(db, tenant_id, upload_type.value, mapping_with_confidence, import_id, confirmed=True)
     else:
-        mapping_with_confidence = infer_mapping_with_confidence(sheet.columns, sheet.dataframe)
-        mapping = {
-            col: info["canonical"]
-            for col, info in mapping_with_confidence.items()
-            if info["canonical"]
+        saved_mapping = get_saved_mapping(db, tenant_id, upload_type.value)
+        if saved_mapping:
+            for source, target in saved_mapping.items():
+                if source in mapping_with_confidence:
+                    mapping_with_confidence[source]["canonical"] = target
+                    mapping_with_confidence[source]["method"] = "saved"
+                    mapping_with_confidence[source]["confidence"] = max(mapping_with_confidence[source].get("confidence", 0), 0.95)
+        persist_mapping(db, tenant_id, upload_type.value, mapping_with_confidence, import_id, confirmed=False)
+
+    mapping = {col: info["canonical"] for col, info in mapping_with_confidence.items() if info.get("canonical")}
+    required_fields = ["order_date"] if upload_type.value in ("orders", "mixed") else (["product_name"] if upload_type.value == "products" else [])
+    missing_required = [field for field in required_fields if field not in mapping.values()]
+    low_confidence = upload_type == UploadType.UNKNOWN or confidence < 0.3
+    requires_review = bool(missing_required or low_confidence)
+
+    if requires_review and not manual_mapping:
+        import_sheet.valid_rows = 0
+        import_sheet.invalid_rows = sheet.row_count
+        import_sheet.status = "completed"
+        db.commit()
+        return {
+            "sheet_name": sheet.sheet_name,
+            "detected_type": upload_type.value,
+            "detection_confidence": round(confidence, 2),
+            "valid_rows": 0,
+            "invalid_rows": sheet.row_count,
+            "skipped_rows": 0,
+            "top_errors": [],
+            "file_warnings": sheet.warnings,
+            "requires_review": True,
+            "main_reason": "Revisión manual necesaria",
+            "user_message": "El archivo se ha leído, pero faltan columnas mínimas o la detección automática no es suficiente para procesarlo con seguridad.",
+            "suggestions": [
+                "Revisa la asignación de columnas antes de procesar este import.",
+                *([f"Falta asignar: {', '.join(missing_required)}"] if missing_required else []),
+            ],
         }
-        persist_mapping(db, tenant_id, upload_type.value, mapping_with_confidence, import_id)
 
-    df           = sheet.dataframe.copy()
-    rename_map   = {col: mapping[col] for col in df.columns if col in mapping}
+    df = sheet.dataframe.copy()
+    rename_map = {col: mapping[col] for col in df.columns if col in mapping}
     df_canonical = df.rename(columns=rename_map)
-
     validation_results, processable_df = validate_dataframe(df_canonical, upload_type.value)
     summary = build_validation_summary(validation_results)
-
-    invalid_results = [
-        r for r in validation_results
-        if r.status.value in ("invalid", "error")
-    ]
-    if invalid_results:
-        staging_records = []
-        for result in invalid_results:
-            row_dict = df.loc[result.row_index].where(
-                pd.notna(df.loc[result.row_index]), None
-            ).to_dict() if result.row_index in df.index else {}
-
-            staging_records.append({
-                "id":                str(uuid.uuid4()),
-                "tenant_id":         tenant_id,
-                "upload_id":         import_id,
-                "import_id":         import_id,
-                "sheet_id":          sheet_id,
-                "upload_type":       upload_type.value,
-                "filename":          sheet.sheet_name,
-                "row_index":         result.row_index,
-                "raw_data":          row_dict,
-                "mapped_data":       {},
-                "transformed_data":  {},
-                "validation_errors": result.errors,
-                "status":            result.status.value,
-                "skip_reason":       None,
-                "error_message":     None,
-                "processed_at":      None,
-            })
-
-        try:
-            db.bulk_insert_mappings(RawUpload, staging_records)
-            db.commit()
-        except Exception:
-            db.rollback()
+    _apply_validation_results_to_raw_rows(db, tenant_id, import_id, sheet_id, validation_results, df, rename_map)
 
     valid_loaded = 0
-
     if not processable_df.empty:
         if upload_type in (UploadType.ORDERS, UploadType.MIXED):
             existing_ids = _get_existing_external_ids(db, tenant_id, Order)
-            valid_loaded = _bulk_write_orders(
-                db, tenant_id, import_id,
-                processable_df, df, mapping,
-                existing_ids, BATCH_SIZE
-            )
+            valid_loaded = _bulk_write_orders(db, tenant_id, import_id, processable_df, df, mapping, existing_ids, BATCH_SIZE)
         elif upload_type == UploadType.ORDER_LINES:
             existing_ids = _get_existing_external_ids(db, tenant_id, OrderLine)
-            valid_loaded = _bulk_write_order_lines(
-                db, tenant_id, import_id,
-                processable_df, mapping,
-                existing_ids, BATCH_SIZE
-            )
+            valid_loaded = _bulk_write_order_lines(db, tenant_id, import_id, processable_df, mapping, existing_ids, BATCH_SIZE)
         elif upload_type == UploadType.CUSTOMERS:
             existing_ids = _get_existing_external_ids(db, tenant_id, Customer)
-            valid_loaded = _bulk_write_customers(
-                db, tenant_id, import_id,
-                processable_df,
-                existing_ids, BATCH_SIZE
-            )
+            valid_loaded = _bulk_write_customers(db, tenant_id, import_id, processable_df, existing_ids, BATCH_SIZE)
         elif upload_type == UploadType.PRODUCTS:
             existing_ids = _get_existing_external_ids(db, tenant_id, Product)
-            valid_loaded = _bulk_write_products(
-                db, tenant_id, import_id,
-                processable_df,
-                existing_ids, BATCH_SIZE
-            )
+            valid_loaded = _bulk_write_products(db, tenant_id, import_id, processable_df, existing_ids, BATCH_SIZE)
 
-    import_sheet.valid_rows   = valid_loaded
+    import_sheet.valid_rows = valid_loaded
     import_sheet.invalid_rows = summary["invalid_rows"]
     import_sheet.skipped_rows = summary["skipped_rows"]
-    import_sheet.status       = "completed"
+    import_sheet.status = "completed"
     db.commit()
 
     return {
-        "sheet_name":           sheet.sheet_name,
-        "detected_type":        upload_type.value,
+        "sheet_name": sheet.sheet_name,
+        "detected_type": upload_type.value,
         "detection_confidence": round(confidence, 2),
-        "valid_rows":           valid_loaded,
-        "invalid_rows":         summary["invalid_rows"],
-        "skipped_rows":         summary["skipped_rows"],
-        "top_errors":           summary.get("top_errors", []),
-        "file_warnings":        sheet.warnings,
+        "valid_rows": valid_loaded,
+        "invalid_rows": summary["invalid_rows"],
+        "skipped_rows": summary["skipped_rows"],
+        "top_errors": summary.get("top_errors", []),
+        "file_warnings": sheet.warnings,
+        "requires_review": False,
+        "main_reason": None,
+        "user_message": None,
+        "suggestions": [],
     }
+
+
+def _stage_raw_rows(db, tenant_id, import_id, sheet_id, sheet):
+    batch = []
+    for idx, row in sheet.dataframe.iterrows():
+        row_dict = row.where(pd.notna(row), None).to_dict()
+        batch.append({
+            "id": str(uuid.uuid4()),
+            "tenant_id": tenant_id,
+            "upload_id": import_id,
+            "import_id": import_id,
+            "sheet_id": sheet_id,
+            "upload_type": None,
+            "filename": sheet.sheet_name,
+            "row_index": int(idx),
+            "raw_data": row_dict,
+            "mapped_data": {},
+            "transformed_data": {},
+            "validation_errors": [],
+            "status": "pending",
+            "skip_reason": None,
+            "error_message": None,
+            "processed_at": None,
+        })
+    if batch:
+        db.bulk_insert_mappings(RawUpload, batch)
+        db.commit()
+
+
+def _apply_validation_results_to_raw_rows(db, tenant_id, import_id, sheet_id, validation_results, original_df, rename_map):
+    for result in validation_results:
+        if result.status.value == "valid":
+            continue
+        row_dict = original_df.loc[result.row_index].where(pd.notna(original_df.loc[result.row_index]), None).to_dict() if result.row_index in original_df.index else {}
+        mapped = {rename_map.get(k, k): v for k, v in row_dict.items() if rename_map.get(k, k)}
+        transformed = transform_row(mapped) if mapped else {}
+        db.query(RawUpload).filter_by(import_id=import_id, tenant_id=tenant_id, sheet_id=sheet_id, row_index=result.row_index).update({
+            RawUpload.mapped_data: mapped,
+            RawUpload.transformed_data: transformed,
+            RawUpload.validation_errors: result.errors,
+            RawUpload.status: result.status.value,
+            RawUpload.error_message: '; '.join(e.get('message', '') for e in result.errors)[:500] if result.errors else None,
+        }, synchronize_session=False)
+    db.commit()
 
 # HELPERS DE RENDIMIENTO
 def _get_existing_external_ids(db: Session, tenant_id: str, model) -> set:

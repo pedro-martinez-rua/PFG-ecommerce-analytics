@@ -14,11 +14,8 @@ from sqlalchemy.orm import Session
 from app.models.field_mapping import FieldMapping
 
 
-# ─── Aliases canónicos ──────────────────────────────────────────────────────
-
 CANONICAL_ALIASES: dict[str, list[str]] = {
 
-    # ── PEDIDOS ─────────────────────────────────────────────────────────────
     "external_id": [
         "order_id","order_number","orderid","ordernumber",
         "invoice_no","invoiceno","invoice_number","invoicenumber",
@@ -119,7 +116,6 @@ CANONICAL_ALIASES: dict[str, list[str]] = {
     "utm_campaign": ["utm_campaign","campaign","campaña","campaign_name","promo_code"],
     "device_type":  ["device_type","device","dispositivo","device_category","platform"],
 
-    # ── CLIENTE ──────────────────────────────────────────────────────────────
     "customer_external_id": [
         "customer_id","customerid","user_id","userid","client_id",
         "clientid","id_cliente","buyer_id","shopper_id","member_id",
@@ -137,7 +133,6 @@ CANONICAL_ALIASES: dict[str, list[str]] = {
         "billed_to","ship_to_name",
     ],
 
-    # ── PRODUCTO ─────────────────────────────────────────────────────────────
     "product_external_id": [
         "product_id","productid","stock_code","stockcode","item_id",
         "id_producto","prod_id","primary_product_id","item_number",
@@ -203,7 +198,6 @@ CANONICAL_ALIASES: dict[str, list[str]] = {
 FUZZY_THRESHOLD = 75
 
 
-# ─── Nivel 1: Fuzzy matching ─────────────────────────────────────────────────
 
 def _normalize(col: str) -> str:
     return col.lower().strip().replace(" ", "_").replace("-", "_").replace(".", "_")
@@ -228,7 +222,6 @@ def infer_mapping_with_confidence(
     result: dict[str, dict] = {}
     already_assigned: dict[str, str] = {}  # canonical → col (para evitar duplicados)
 
-    # ── Nivel 1: fuzzy ────────────────────────────────────────────────
     for col in columns:
         col_norm = _normalize(col)
         best_canonical = None
@@ -260,7 +253,6 @@ def infer_mapping_with_confidence(
                 "method":     "unresolved",
             }
 
-    # ── Nivel 2: análisis de contenido para los no resueltos ──────────
     if df is not None:
         for col in columns:
             if result[col]["canonical"] is not None:
@@ -273,8 +265,6 @@ def infer_mapping_with_confidence(
                     "method":     "content",
                 }
 
-    # ── Resolver duplicados: si dos columnas mapean al mismo canonical ─
-    # Prioridad: exact > fuzzy > content. La de mayor confianza gana.
     canonical_to_best: dict[str, tuple[str, float]] = {}
     for col, info in result.items():
         if not info["canonical"]:
@@ -290,7 +280,6 @@ def infer_mapping_with_confidence(
         c = info["canonical"]
         winner_col, _ = canonical_to_best[c]
         if col != winner_col:
-            # Este duplicado va a extra_attributes con nombre original
             result[col] = {
                 "canonical":  None,
                 "confidence": info["confidence"],
@@ -386,7 +375,6 @@ def _infer_from_content(df: pd.DataFrame, col: str) -> str | None:
         return None
 
 
-# ─── Funciones públicas ───────────────────────────────────────────────────────
 
 def infer_mapping(
     columns: list[str],
@@ -406,6 +394,7 @@ def persist_mapping(
     upload_type: str,
     mapping_with_confidence: dict[str, dict],
     import_id: str,
+    confirmed: bool = False,
 ) -> None:
     """
     Guarda el mapping inferido en BD asociado al tenant.
@@ -424,8 +413,10 @@ def persist_mapping(
             continue
         if source_col in existing_mappings:
             existing = existing_mappings[source_col]
-            if info["confidence"] > (existing.confidence or 0):
+            if info["confidence"] > (existing.confidence or 0) or confirmed:
                 existing.confidence = info["confidence"]
+                existing.canonical_field = info["canonical"]
+                existing.is_confirmed = existing.is_confirmed or confirmed
         else:
             fm = FieldMapping(
                 tenant_id=tenant_id,
@@ -433,7 +424,7 @@ def persist_mapping(
                 source_column=source_col,
                 canonical_field=info["canonical"],
                 confidence=info["confidence"],
-                is_confirmed=info["method"] == "exact",
+                is_confirmed=confirmed or info.get("method") in {"exact", "manual", "saved"},
                 import_id=import_id,
             )
             db.add(fm)
