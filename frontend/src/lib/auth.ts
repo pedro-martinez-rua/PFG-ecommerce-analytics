@@ -130,6 +130,48 @@ class AuthService {
     // El backend no tiene este endpoint aún — devolver success por UX
     return { success: true };
   }
+  async updateMe(payload: { full_name: string }): Promise<{ success: boolean; error?: string }> {
+    try {
+      const token = this.session?.token
+      if (!token) return { success: false, error: 'No autenticado' }
+
+      const res = await fetch(`${API_BASE}/api/auth/me`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      })
+
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        if (typeof data.detail === 'string') {
+          return { success: false, error: data.detail }
+        }
+        if (Array.isArray(data.detail) && data.detail.length > 0) {
+          return { success: false, error: data.detail.map((err: any) => err.msg).join(' · ') }
+        }
+        return { success: false, error: 'No se pudo actualizar el perfil' }
+      }
+
+      if (this.session) {
+        const updatedSession: Session = {
+          ...this.session,
+          user: {
+            ...this.session.user,
+            fullName: data.full_name || payload.full_name,
+          },
+        }
+        this.saveSession(updatedSession)
+      }
+
+      return { success: true }
+    } catch {
+      return { success: false, error: 'Error de conexión con el servidor' }
+    }
+  }
 
   getSession(): Session | null     { return this.session; }
   isAuthenticated(): boolean        { return this.session !== null && new Date(this.session.expiresAt) > new Date(); }
@@ -149,3 +191,4 @@ export const isAuthenticated   = ()                     => authService.isAuthent
 export const isAdmin           = ()                     => authService.isAdmin();
 export const getCurrentUser    = ()                     => authService.getCurrentUser();
 export const getCurrentTenant  = ()                     => authService.getCurrentTenant();
+export const updateMe = (payload: { full_name: string }) => authService.updateMe(payload);

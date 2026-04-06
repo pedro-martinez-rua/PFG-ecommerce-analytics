@@ -1,12 +1,3 @@
-"""
-kpi_calculator.py — Funciones puras de cálculo de KPIs.
-
-Cada función recibe un DataFrame de orders/lines/customers
-ya filtrado por tenant y periodo, y devuelve el valor calculado.
-
-Principio: funciones puras sin side effects.
-El kpi_service es el que orquesta y persiste.
-"""
 from datetime import date
 from decimal import Decimal
 from typing import Optional
@@ -137,25 +128,31 @@ def calc_gross_margin_pct(orders_df: pd.DataFrame, coverage: dict) -> tuple[Opti
 
 
 def calc_net_revenue(orders_df: pd.DataFrame) -> tuple[Optional[float], str]:
-    """Net revenue = revenue - refunds - discounts. Adaptativo."""
-    revenue   = calc_total_revenue(orders_df)
+
+    if orders_df.empty:
+        return None, "missing"
+
+    # 1) Prioridad: net_amount si existe y tiene cobertura razonable
+    if "net_amount" in orders_df.columns:
+        vals = pd.to_numeric(orders_df["net_amount"], errors="coerce")
+        coverage = vals.notna().sum() / max(len(orders_df), 1)
+
+        if coverage >= 0.5:
+            return round(float(vals.dropna().sum()), 2), "real"
+
+    # 2) Fallback conservador: total_amount - refunds
+    revenue = calc_total_revenue(orders_df)
     if revenue is None:
         return None, "missing"
 
-    has_refunds   = "refund_amount" in orders_df.columns
-    has_discounts = "discount_amount" in orders_df.columns
+    refunds = 0.0
+    if "refund_amount" in orders_df.columns:
+        refunds = float(pd.to_numeric(orders_df["refund_amount"], errors="coerce").sum())
 
-    refunds   = orders_df["refund_amount"].apply(pd.to_numeric, errors="coerce").sum() \
-                if has_refunds else 0
-    discounts = orders_df["discount_amount"].apply(pd.to_numeric, errors="coerce").sum() \
-                if has_discounts else 0
+    net = float(revenue) - refunds
 
-    net = float(revenue) - float(refunds) - float(discounts)
-
-    if not has_refunds and not has_discounts:
-        return round(net, 2), "estimated"
-    return round(net, 2), "real"
-
+    # 3) Si no hubo net_amount, esto es una aproximación
+    return round(net, 2), "estimated"
 
 def calc_total_refunds(orders_df: pd.DataFrame) -> Optional[float]:
     if "refund_amount" not in orders_df.columns:
@@ -257,57 +254,6 @@ def calc_unique_customers(orders_df: pd.DataFrame) -> Optional[int]:
     if "customer_id" not in orders_df.columns:
         return None
     return int(orders_df["customer_id"].dropna().nunique())
-
-
-def calc_new_vs_returning(
-    orders_df: pd.DataFrame,
-    all_orders_df: pd.DataFrame   # todos los pedidos históricos del tenant
-) -> tuple[Optional[dict], str]:
-    """
-    Nuevo = cliente que aparece por primera vez en el periodo.
-    Recurrente = cliente que ya tenía pedidos antes del periodo.
-    Requiere customer_id.
-    """
-    if "customer_id" not in orders_df.columns:
-        return None, "missing"
-
-    period_customers   = set(orders_df["customer_id"].dropna().unique())
-    historic_customers = set(all_orders_df["customer_id"].dropna().unique())
-
-    # Clientes que existían antes del periodo actual
-    returning = period_customers & (historic_customers - period_customers)
-    new       = period_customers - historic_customers
-
-    # Si no hay histórico suficiente, estimamos
-    if len(all_orders_df) == len(orders_df):
-        # Solo hay datos del periodo actual — no podemos distinguir
-        total = len(period_customers)
-        return {"new": total, "returning": 0}, "estimated"
-
-    return {
-        "new":       len(period_customers - returning),
-        "returning": len(returning)
-    }, "real"
-
-
-def calc_repeat_purchase_rate(orders_df: pd.DataFrame) -> Optional[float]:
-    if "customer_id" not in orders_df.columns:
-        return None
-    customer_orders = orders_df.groupby("customer_id").size()
-    returning = (customer_orders > 1).sum()
-    total     = len(customer_orders)
-    if total == 0:
-        return None
-    return round((returning / total) * 100, 2)
-
-
-def calc_avg_ltv(orders_df: pd.DataFrame) -> Optional[float]:
-    revenue  = calc_total_revenue(orders_df)
-    customers = calc_unique_customers(orders_df)
-    if not revenue or not customers:
-        return None
-    return round(revenue / customers, 2)
-
 
 # ─────────────────────────────────────────────
 # GRUPO E — OPERACIÓN
