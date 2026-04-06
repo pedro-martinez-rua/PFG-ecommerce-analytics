@@ -1,4 +1,10 @@
 {
+  "common": {
+    "language": "Language",
+    "goHome": "Go home",
+    "notFoundTitle": "Page not found",
+    "notFoundDesc": "The page you're looking for doesn't exist."
+  },
   "nav": {
     "product": "Product",
     "tutorials": "Tutorials",
@@ -6,51 +12,43 @@
     "contact": "Contact",
     "login": "Log in",
     "register": "Create account",
-
     "language": "Language",
     "lang": {
       "es": "Spanish",
       "en": "English"
     }
   },
-  "common": {
-    "language": "Language",
-    "goHome": "Go home",
-    "notFoundTitle": "Page not found",
-    "notFoundDesc": "The page you're looking for doesn't exist."
-    
-  },
   "app": {
     "brand": "CommerceIQ",
-
     "sidebar": {
       "overview": "Overview",
       "upload": "Upload data",
       "dashboards": "Dashboards",
       "reports": "Saved reports",
+      "imports": "Imports",
       "tutorials": "Tutorials",
       "faq": "FAQ",
       "contact": "Contact",
-      "profile": "Profile & settings"
+      "profile": "Profile & settings",
+      "support": "Support",
+      "account": "Account"
     },
-
     "topbar": {
       "selectWorkspace": "Select workspace",
       "notifications": "Notifications"
     },
-
     "user": {
       "profile": "Profile & settings",
       "logout": "Log out"
     },
-
     "plan": {
       "free": "Free plan",
       "starter": "Starter plan",
-      "professional": "Professional plan"
+      "professional": "Professional plan",
+      "enterprise": "Enterprise plan"
     }
   },
-    "auth": {
+  "auth": {
     "brand": "CommerceIQ",
     "footer": {
       "privacy": "Privacy",
@@ -58,16 +56,14 @@
       "contact": "Contact"
     }
   },
-   "footer": {
+  "footer": {
     "brand": "CommerceIQ",
     "tagline": "E-commerce analytics made simple. Upload your data and get instant insights.",
-
     "sections": {
       "product": "Product",
       "company": "Company",
       "legal": "Legal"
     },
-
     "links": {
       "features": "Features",
       "tutorials": "Tutorials",
@@ -79,7 +75,6 @@
       "termsOfService": "Terms of service",
       "security": "Security"
     },
-
     "copyright": "© {{year}} CommerceIQ. All rights reserved."
   },
   "home": {
@@ -88,41 +83,38 @@
       "title": "E-commerce analytics",
       "highlight": "made simple",
       "description": "Upload your store data and get instant dashboards and KPIs. No complex setup or technical knowledge required.",
-      "ctaPrimary": "Create account",
+      "ctaPrimary": "Get started free",
       "ctaSecondary": "Log in"
     },
-
     "problem": {
       "title": "Tired of spreadsheet chaos?",
-      "description": "Most e-commerce businesses waste hours exporting data and building spreadsheets. There’s a better way."
+      "description": "Most e-commerce businesses waste hours exporting data and building spreadsheets. There's a better way."
     },
-
     "howItWorks": {
       "title": "How it works",
       "subtitle": "From raw data to clear decisions in three simple steps.",
       "steps": {
         "step1": {
           "title": "Upload your data",
-          "description": "Export your store data and upload it. We support the most common formats."
+          "description": "Export your store data and upload it. We support CSV, Excel and JSON."
         },
         "step2": {
           "title": "Get instant KPIs",
-          "description": "We automatically detect your data structure and generate relevant metrics."
+          "description": "We automatically detect your data structure and generate relevant metrics for your business."
         },
         "step3": {
           "title": "Explore and act",
-          "description": "Analyze dashboards, apply filters, and take action based on real data."
+          "description": "Analyze dashboards, filter by date range, and make decisions based on real data."
         }
       }
     },
-
     "benefits": {
-      "title": "Why InsightFlow?",
+      "title": "Why CommerceIQ?",
       "subtitle": "Built for businesses that want clarity without complexity.",
       "items": {
         "decisions": {
           "title": "Data-driven decisions",
-          "description": "Stop guessing and clearly see what’s working."
+          "description": "Stop guessing and see clearly what's working in your store."
         },
         "time": {
           "title": "Save hours every week",
@@ -130,11 +122,10 @@
         },
         "teams": {
           "title": "Built for teams",
-          "description": "Share dashboards and align your team."
+          "description": "Share dashboards and reports with your whole team."
         }
       }
     },
-
     "features": {
       "title": "Everything you need",
       "subtitle": "Powerful analytics without the learning curve.",
@@ -149,23 +140,22 @@
         },
         "ai": {
           "title": "AI-powered insights",
-          "description": "Optional AI analysis to uncover trends and opportunities."
+          "description": "Automatic analysis to detect opportunities and risks."
         },
         "security": {
-          "title": "Enterprise-grade security",
-          "description": "Multi-tenant architecture with full data isolation."
+          "title": "Multi-tenant architecture",
+          "description": "Your data is completely isolated from other customers."
         },
         "realtime": {
-          "title": "Real-time analytics",
-          "description": "Track revenue, orders, and custom metrics."
+          "title": "Historical & period analysis",
+          "description": "Filter by dates and compare ranges to understand your growth."
         },
         "export": {
-          "title": "Export & share",
-          "description": "Save reports and share insights with your team."
+          "title": "Saved reports",
+          "description": "Save dashboard snapshots with AI analysis included."
         }
       }
     },
-
     "cta": {
       "title": "Ready to understand your store better?",
       "description": "Start for free. No credit card required. See results in minutes.",
@@ -173,13 +163,11 @@
       "secondary": "Talk to us"
     }
   },
-   "tutorials": {
+  "tutorials": {
     "loading": "Loading tutorials...",
     "title": "Tutorials & guides",
-    "subtitle": "Learn how to get the most out of InsightFlow with step-by-step guides.",
-
+    "subtitle": "Learn how to get the most out of CommerceIQ with step-by-step guides.",
     "readTime": "{{time}} min read",
-
     "categories": {
       "getting-started": "Getting started",
       "data-upload": "Data upload",
@@ -187,27 +175,24 @@
       "advanced": "Advanced"
     }
   },
-   "tutorialDetail": {
+  "tutorialDetail": {
     "loading": "Loading tutorial...",
     "back": "Back to tutorials",
-
     "notFound": {
       "title": "Tutorial not found",
       "description": "The tutorial you're looking for doesn't exist or has been moved.",
       "action": "Browse all tutorials"
     },
-
     "feedback": {
       "question": "Was this tutorial helpful?",
       "positive": "Yes, thanks!",
       "negative": "Could be better"
     }
   },
-   "faq": {
+  "faq": {
     "loading": "Loading FAQs...",
     "title": "Frequently Asked Questions",
-    "subtitle": "Find answers to the most common questions about InsightFlow.",
-
+    "subtitle": "Find answers to the most common questions about CommerceIQ.",
     "categories": {
       "general": "General",
       "pricing": "Pricing",
@@ -215,23 +200,20 @@
       "security": "Security",
       "account": "Account"
     },
-
     "footer": {
       "text": "Still have questions? We're here to help.",
       "link": "Contact our support team"
     }
   },
-   "contact": {
+  "contact": {
     "title": "Get in touch",
     "subtitle": "Have a question or need help? We'd love to hear from you.",
-
     "info": {
       "emailLabel": "Email",
       "hoursLabel": "Office hours",
       "hoursDays": "Monday - Friday",
-      "hoursTime": "9:00 AM - 6:00 PM (EST)"
+      "hoursTime": "9:00 AM - 6:00 PM (CET)"
     },
-
     "form": {
       "name": {
         "label": "Name *",
@@ -254,7 +236,6 @@
         "loading": "Sending..."
       }
     },
-
     "validation": {
       "nameRequired": "Please enter your name",
       "emailRequired": "Please enter your email",
@@ -262,7 +243,6 @@
       "messageRequired": "Please enter your message",
       "messageMin": "Please provide more details (at least {{min}} characters)"
     },
-
     "success": {
       "title": "Message sent!",
       "description": "Thank you for reaching out. We'll get back to you within 1–2 business days.",
@@ -272,36 +252,31 @@
   "forgotPassword": {
     "title": "Reset your password",
     "subtitle": "Enter your email and we'll send you a reset link",
-
     "form": {
       "email": {
         "label": "Email",
         "placeholder": "you@example.com"
       }
     },
-
     "validation": {
       "emailRequired": "Email is required",
       "emailInvalid": "Please enter a valid email address"
     },
-
     "actions": {
       "sending": "Sending...",
       "sendLink": "Send reset link",
       "resend": "Resend email",
       "backToLogin": "Back to login"
     },
-
     "success": {
       "title": "Check your email",
       "description": "We've sent a password reset link to",
-      "helper": "Didn't receive the email? Check your spam folder or try a different email address."
+      "helper": "Didn't receive the email? Check your spam folder or try a different address."
     }
   },
   "login": {
     "title": "Welcome back",
     "subtitle": "Sign in to your account to continue",
-
     "form": {
       "email": {
         "label": "Email",
@@ -313,33 +288,28 @@
         "forgot": "Forgot password?"
       }
     },
-
     "actions": {
       "signIn": "Sign in",
       "signingIn": "Signing in..."
     },
-
     "validation": {
       "emailRequired": "Email is required",
       "emailInvalid": "Please enter a valid email address",
       "passwordRequired": "Password is required",
       "passwordMin": "Password must be at least {{min}} characters"
     },
-
     "footer": {
       "noAccount": "Don't have an account?",
       "createOne": "Create one"
     },
-
     "demo": {
       "title": "Demo credentials:",
       "credentials": "admin@example.com / password123"
     }
   },
-   "register": {
+  "register": {
     "title": "Create your account",
     "subtitle": "Start analyzing your store data in minutes",
-
     "form": {
       "fullName": {
         "label": "Full name",
@@ -368,12 +338,10 @@
         "privacyPolicy": "Privacy Policy"
       }
     },
-
     "actions": {
       "create": "Create account",
       "creating": "Creating account..."
     },
-
     "validation": {
       "fullNameRequired": "Full name is required",
       "fullNameInvalid": "Please enter your full name",
@@ -387,7 +355,6 @@
       "companyRequired": "Company name is required",
       "termsRequired": "You must accept the terms and conditions"
     },
-
     "footer": {
       "haveAccount": "Already have an account?",
       "signIn": "Sign in"
@@ -395,24 +362,19 @@
   },
   "dashboards": {
     "loading": "Loading dashboards...",
-
     "title": "Dashboards",
     "subtitle": "View and manage your analytics dashboards.",
-
     "actions": {
       "new": "New dashboard"
     },
-
     "empty": {
       "title": "No dashboards yet",
-      "description": "Create your first dashboard by uploading data or click the button below to get started.",
+      "description": "Create your first dashboard by uploading data or click the button to get started.",
       "action": "Upload data"
     },
-
     "badges": {
       "default": "Default"
     },
-
     "meta": {
       "updated": "Updated {{date}}",
       "kpis": "{{count}} KPI",
@@ -421,66 +383,43 @@
   },
   "dashboardDetail": {
     "loading": "Loading dashboard...",
-
     "back": "Back to dashboards",
-
+    "allData": "All available data",
+    "filterActive": "filter active",
+    "noData": "No order data in the selected range.",
+    "reportSaved": "Report saved",
+    "reportSavedWith": "Report saved ({{from}} → {{to}}) with AI analysis included",
+    "viewReports": "View reports",
     "notFound": {
       "title": "Dashboard not found",
       "description": "The dashboard you're looking for doesn't exist or has been deleted.",
       "action": "View all dashboards"
     },
-
     "actions": {
-      "export": "Export",
+      "viewAI": "View AI analysis",
       "saveReport": "Save report",
-      "explain": "Explain results"
+      "saving": "Saving...",
+      "saved": "Report saved"
     },
-
-    "filters": {
-      "dateRange": {
-        "placeholder": "Date range",
-        "options": {
-          "7d": "Last 7 days",
-          "30d": "Last 30 days",
-          "90d": "Last 90 days",
-          "1y": "Last year"
-        }
-      },
-      "category": {
-        "placeholder": "Category",
-        "options": {
-          "all": "All categories",
-          "apparel": "Apparel",
-          "electronics": "Electronics",
-          "home": "Home & Garden"
-        }
-      }
+    "filter": {
+      "label": "Filter by range",
+      "available": "Available: {{from}} – {{to}}",
+      "from": "From",
+      "to": "To",
+      "apply": "Apply",
+      "reset": "Reset"
     },
-
-    "dateRanges": {
-      "7d": "7 days",
-      "30d": "30 days",
-      "90d": "90 days",
-      "1y": "year"
-    },
-
+    "metrics": "Metrics",
     "charts": {
-      "revenue": {
-        "title": "Revenue over time",
-        "subtitle": "Last {{range}}"
-      },
-      "orders": {
-        "title": "Orders by product",
-        "subtitle": "Top performing products"
-      },
-      "acquisition": {
-        "title": "Customer acquisition",
-        "subtitle": "New vs returning customers"
-      },
-      "funnel": {
-        "title": "Conversion funnel",
-        "subtitle": "Visitor to purchase journey"
-      }
+      "revenueTime": "Revenue over time",
+      "revenueTimeSubtitle": "Monthly evolution",
+      "ordersTime": "Orders over time",
+      "ordersTimeSubtitle": "Order volume",
+      "revenueChannel": "Revenue by channel",
+      "topProducts": "Top products",
+      "topProductsSubtitle": "By revenue generated",
+      "revenueCategory": "Revenue by category",
+      "topCountries": "Top countries"
     }
   },
   "overview": {
@@ -488,23 +427,19 @@
       "title": "Welcome back, {{name}}",
       "subtitle": "Here's what's happening with {{tenant}} today."
     },
-
     "sections": {
       "keyMetrics": "Key metrics",
       "continue": "Continue where you left off",
       "latestInsights": "Latest insights",
       "nextSteps": "Next steps"
     },
-
     "actions": {
       "viewAll": "View all",
       "openDashboard": "Open dashboard"
     },
-
     "meta": {
       "lastUpdated": "Last updated {{date}}"
     },
-
     "charts": {
       "revenue": {
         "title": "Revenue trend",
@@ -515,11 +450,9 @@
         "subtitle": "This month"
       }
     },
-
     "insights": {
       "empty": "No insights yet. Upload more data to generate insights."
     },
-
     "nextActions": {
       "upload": {
         "title": "Upload new data",
@@ -535,10 +468,56 @@
       }
     }
   },
+  "imports": {
+    "title": "Imports",
+    "subtitle": "Manage your uploaded files. Use the preview to inspect the file and manual review to fix columns.",
+    "upload": "Upload data",
+    "empty": {
+      "title": "No imports yet",
+      "description": "Upload your first CSV or Excel file to start analyzing your data."
+    },
+    "status": {
+      "completed": "Completed",
+      "needs_review": "Review columns",
+      "failed": "Failed",
+      "completed_with_errors": "With errors",
+      "processing": "Processing"
+    },
+    "preview": {
+      "raw": "Raw preview",
+      "normalized": "Normalized",
+      "hide": "Hide",
+      "loading": "Loading preview...",
+      "error": "Could not load preview.",
+      "empty": "No data to preview in this import."
+    },
+    "mapping": {
+      "button": "Review columns",
+      "title": "Review column assignment",
+      "description": "Check and correct which system field each column in your file maps to.",
+      "loading": "Analyzing file columns...",
+      "detectedType": "Detected type",
+      "confidence": "Detection confidence",
+      "missingRequired": "Required fields not assigned",
+      "columnHeader": "Column in your file",
+      "fieldHeader": "System field",
+      "ignoreColumn": "— Ignore this column —",
+      "requiredField": "Required field — must be assigned",
+      "legend": "Red rows are required fields. Columns set to \"Ignore\" will not be imported.",
+      "cancel": "Cancel",
+      "apply": "Apply and reprocess",
+      "applying": "Applying..."
+    },
+    "delete": {
+      "confirm": "Delete \"{{name}}\"?\n\nAll associated data will be removed.",
+      "willDelete": "DASHBOARDS THAT WILL BE DELETED",
+      "willBeIncomplete": "DASHBOARDS THAT WILL BE INCOMPLETE",
+      "error": "Error deleting import."
+    }
+  },
   "profile": {
     "title": "Profile & settings",
     "subtitle": "Manage your account settings and preferences.",
-
     "tabs": {
       "profile": "Profile",
       "company": "Company",
@@ -546,37 +525,31 @@
       "billing": "Billing",
       "members": "Members"
     },
-
     "fields": {
       "fullName": "Full name",
       "email": "Email",
       "role": "Role",
       "companyName": "Company name"
     },
-
     "roles": {
       "admin": "Admin",
       "collaborator": "Collaborator"
     },
-
     "actions": {
       "saveChanges": "Save changes",
       "saving": "Saving...",
       "saved": "Saved"
     },
-
     "profileSection": {
       "title": "Personal information",
       "emailLocked": "Email cannot be changed"
     },
-
     "companySection": {
       "title": "Company information",
       "currentPlan": "Current plan",
       "dataRetention": "Data retention",
       "retentionValue": "{{days}} days"
     },
-
     "company": {
       "plans": {
         "free": "Free",
@@ -584,28 +557,24 @@
         "enterprise": "Enterprise"
       }
     },
-
     "securitySection": {
       "changePassword": "Change password",
       "currentPassword": "Current password",
       "newPassword": "New password",
       "confirmNewPassword": "Confirm new password",
       "updatePassword": "Update password",
-
       "activeSessions": "Active sessions",
       "currentSession": "Current session",
       "lastActive": "Last active: {{value}}",
       "justNow": "Just now",
       "active": "Active"
     },
-
     "billingSection": {
       "title": "Billing & subscription",
       "comingSoon": "Billing functionality coming soon.",
       "description": "Manage your subscription and payment methods here.",
       "adminOnly": "Only admins can access billing settings."
     },
-
     "membersSection": {
       "title": "Team members",
       "invite": "Invite member",
@@ -614,70 +583,63 @@
   },
   "reports": {
     "loading": "Loading reports...",
-
     "title": "Saved reports",
     "subtitle": "View your saved dashboard snapshots and reports.",
-
     "empty": {
       "title": "No saved reports",
       "description": "Save a dashboard snapshot to create your first report.",
       "action": "View dashboards"
     },
-
     "table": {
       "reportName": "Report name",
       "dashboard": "Dashboard",
       "kpiSummary": "KPI summary",
       "created": "Created"
     },
-
     "actions": {
-      "open": "Open"
+      "open": "Open",
+      "delete": "Delete"
+    },
+    "period": {
+      "allData": "All data",
+      "range": "{{from}} → {{to}}"
     }
   },
   "upload": {
     "title": "Upload data",
     "subtitle": "Upload your store data to generate dashboards and insights.",
-
     "dropzone": {
       "title": "Drop your file here",
       "subtitle": "or click to browse",
       "uploading": "Uploading..."
     },
-
     "formats": {
       "csv": "CSV",
       "excel": "Excel",
       "json": "JSON"
     },
-
     "validation": {
       "type": "Please upload a CSV, Excel, or JSON file.",
       "size": "File size must be less than {{max}}MB."
     },
-
     "errors": {
       "uploadFailed": "Upload failed. Please try again.",
       "dismiss": "Dismiss error"
     },
-
     "success": {
       "title": "Upload complete!",
       "subtitle": "Your data has been processed and is ready to analyze.",
-
       "summary": {
         "dataset": "Dataset",
         "fileType": "File type",
         "rows": "Rows",
         "columns": "Columns"
       },
-
       "actions": {
         "viewDashboards": "View dashboards",
         "uploadAnother": "Upload another"
       }
     },
-
     "tips": {
       "title": "Data format tips",
       "items": {
@@ -708,7 +670,6 @@
       "14": { "title": "Governing law", "content": "These Terms are governed by Spanish and EU law." }
     }
   },
-
   "privacy": {
     "title": "Privacy Policy",
     "subtitle": "Information about personal data processing at CommerceIQ.",
