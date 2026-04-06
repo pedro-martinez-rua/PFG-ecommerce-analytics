@@ -12,7 +12,6 @@
     "contact": "Contacto",
     "login": "Iniciar sesión",
     "register": "Crear cuenta",
-
     "language": "Idioma",
     "lang": {
       "es": "Español",
@@ -21,33 +20,32 @@
   },
   "app": {
     "brand": "CommerceIQ",
-
     "sidebar": {
       "overview": "Resumen",
       "upload": "Subir datos",
       "dashboards": "Dashboards",
       "reports": "Informes guardados",
+      "imports": "Imports",
       "tutorials": "Tutoriales",
       "faq": "FAQ",
       "contact": "Contacto",
       "profile": "Perfil y ajustes",
-      "imports": "Imports"
+      "support": "Soporte",
+      "account": "Cuenta"
     },
-
     "topbar": {
       "selectWorkspace": "Seleccionar espacio",
       "notifications": "Notificaciones"
     },
-
     "user": {
       "profile": "Perfil y ajustes",
       "logout": "Cerrar sesión"
     },
-
     "plan": {
       "free": "Plan gratuito",
       "starter": "Plan inicial",
-      "professional": "Plan profesional"
+      "professional": "Plan profesional",
+      "enterprise": "Plan enterprise"
     }
   },
   "auth": {
@@ -61,13 +59,11 @@
   "footer": {
     "brand": "CommerceIQ",
     "tagline": "Analítica para e-commerce, sin complicaciones. Sube tus datos y obtén insights al instante.",
-
     "sections": {
       "product": "Producto",
       "company": "Empresa",
       "legal": "Legal"
     },
-
     "links": {
       "features": "Funcionalidades",
       "tutorials": "Tutoriales",
@@ -79,7 +75,6 @@
       "termsOfService": "Términos del servicio",
       "security": "Seguridad"
     },
-
     "copyright": "© {{year}} CommerceIQ. Todos los derechos reservados."
   },
   "home": {
@@ -88,41 +83,38 @@
       "title": "Analítica para e-commerce",
       "highlight": "sin complicaciones",
       "description": "Sube los datos de tu tienda y obtén dashboards y KPIs al instante. Sin configuraciones complejas ni conocimientos técnicos.",
-      "ctaPrimary": "Crear cuenta",
+      "ctaPrimary": "Crear cuenta gratis",
       "ctaSecondary": "Iniciar sesión"
     },
-
     "problem": {
       "title": "¿Cansado del caos en Excel?",
       "description": "Muchos e-commerce pierden horas exportando datos y creando tablas. Hay una forma mejor."
     },
-
     "howItWorks": {
       "title": "Cómo funciona",
       "subtitle": "De datos en bruto a decisiones claras en tres pasos.",
       "steps": {
         "step1": {
           "title": "Sube tus datos",
-          "description": "Exporta los datos de tu tienda y súbelos. Soportamos los formatos más comunes."
+          "description": "Exporta los datos de tu tienda y súbelos. Soportamos CSV, Excel y JSON."
         },
         "step2": {
           "title": "Obtén KPIs al instante",
-          "description": "Detectamos automáticamente la estructura y generamos métricas relevantes."
+          "description": "Detectamos automáticamente la estructura y generamos métricas relevantes para tu negocio."
         },
         "step3": {
           "title": "Explora y actúa",
-          "description": "Analiza dashboards, filtra y toma decisiones basadas en datos reales."
+          "description": "Analiza dashboards, filtra por periodo y toma decisiones basadas en datos reales."
         }
       }
     },
-
     "benefits": {
-      "title": "¿Por qué InsightFlow?",
+      "title": "¿Por qué CommerceIQ?",
       "subtitle": "Pensado para negocios que quieren claridad sin complejidad.",
       "items": {
         "decisions": {
           "title": "Decisiones basadas en datos",
-          "description": "Deja de adivinar y entiende qué funciona realmente."
+          "description": "Deja de adivinar y entiende qué funciona realmente en tu tienda."
         },
         "time": {
           "title": "Ahorra horas cada semana",
@@ -130,11 +122,10 @@
         },
         "teams": {
           "title": "Diseñado para equipos",
-          "description": "Comparte dashboards y alinea a todo tu equipo."
+          "description": "Comparte dashboards e informes con todo tu equipo."
         }
       }
     },
-
     "features": {
       "title": "Todo lo que necesitas",
       "subtitle": "Potencia analítica sin curva de aprendizaje.",
@@ -145,27 +136,26 @@
         },
         "dashboards": {
           "title": "Dashboards instantáneos",
-          "description": "KPIs y visualizaciones automáticas."
+          "description": "KPIs y visualizaciones generados automáticamente."
         },
         "ai": {
           "title": "Insights con IA",
-          "description": "Análisis opcional para detectar oportunidades."
+          "description": "Análisis automático para detectar oportunidades y riesgos."
         },
         "security": {
-          "title": "Seguridad empresarial",
-          "description": "Arquitectura multi-tenant con aislamiento total."
+          "title": "Arquitectura multi-tenant",
+          "description": "Tus datos están completamente aislados del resto de clientes."
         },
         "realtime": {
-          "title": "Analítica en tiempo real",
-          "description": "Ventas, pedidos y métricas personalizadas."
+          "title": "Análisis histórico y por periodo",
+          "description": "Filtra por fechas y compara rangos para entender tu evolución."
         },
         "export": {
-          "title": "Exporta y comparte",
-          "description": "Guarda informes y compártelos con tu equipo."
+          "title": "Informes guardados",
+          "description": "Guarda snapshots de tus dashboards con análisis de IA incluido."
         }
       }
     },
-
     "cta": {
       "title": "¿Listo para entender mejor tu tienda?",
       "description": "Empieza gratis. Sin tarjeta. Resultados en minutos.",
@@ -176,10 +166,8 @@
   "tutorials": {
     "loading": "Cargando tutoriales...",
     "title": "Tutoriales y guías",
-    "subtitle": "Aprende a sacar el máximo partido a InsightFlow con guías paso a paso.",
-
+    "subtitle": "Aprende a sacar el máximo partido a CommerceIQ con guías paso a paso.",
     "readTime": "{{time}} min de lectura",
-
     "categories": {
       "getting-started": "Primeros pasos",
       "data-upload": "Carga de datos",
@@ -190,24 +178,21 @@
   "tutorialDetail": {
     "loading": "Cargando tutorial...",
     "back": "Volver a tutoriales",
-
     "notFound": {
       "title": "Tutorial no encontrado",
       "description": "El tutorial que buscas no existe o ha sido movido.",
       "action": "Ver todos los tutoriales"
     },
-
     "feedback": {
       "question": "¿Te ha resultado útil este tutorial?",
       "positive": "Sí, gracias",
       "negative": "Podría mejorar"
     }
-  }, 
+  },
   "faq": {
     "loading": "Cargando preguntas frecuentes...",
     "title": "Preguntas frecuentes",
-    "subtitle": "Encuentra respuestas a las dudas más comunes sobre InsightFlow.",
-
+    "subtitle": "Encuentra respuestas a las dudas más comunes sobre CommerceIQ.",
     "categories": {
       "general": "General",
       "pricing": "Precios",
@@ -215,23 +200,20 @@
       "security": "Seguridad",
       "account": "Cuenta"
     },
-
     "footer": {
       "text": "¿Sigues teniendo dudas? Estamos aquí para ayudarte.",
       "link": "Contacta con nuestro equipo de soporte"
     }
   },
-   "contact": {
+  "contact": {
     "title": "Contacto",
     "subtitle": "¿Tienes una pregunta o necesitas ayuda? Nos encantará escucharte.",
-
     "info": {
       "emailLabel": "Email",
       "hoursLabel": "Horario de atención",
       "hoursDays": "Lunes - Viernes",
-      "hoursTime": "9:00 - 18:00 (EST)"
+      "hoursTime": "9:00 - 18:00 (CET)"
     },
-
     "form": {
       "name": {
         "label": "Nombre *",
@@ -254,7 +236,6 @@
         "loading": "Enviando..."
       }
     },
-
     "validation": {
       "nameRequired": "Por favor, introduce tu nombre",
       "emailRequired": "Por favor, introduce tu email",
@@ -262,36 +243,31 @@
       "messageRequired": "Por favor, introduce tu mensaje",
       "messageMin": "Por favor, proporciona más detalles (al menos {{min}} caracteres)"
     },
-
     "success": {
       "title": "¡Mensaje enviado!",
       "description": "Gracias por contactarnos. Te responderemos en 1-2 días laborables.",
       "cta": "Enviar otro mensaje"
     }
   },
-   "forgotPassword": {
+  "forgotPassword": {
     "title": "Restablecer contraseña",
     "subtitle": "Introduce tu email y te enviaremos un enlace para restablecerla",
-
     "form": {
       "email": {
         "label": "Email",
         "placeholder": "tu@ejemplo.com"
       }
     },
-
     "validation": {
       "emailRequired": "El email es obligatorio",
       "emailInvalid": "Por favor, introduce un email válido"
     },
-
     "actions": {
       "sending": "Enviando...",
       "sendLink": "Enviar enlace",
       "resend": "Reenviar email",
       "backToLogin": "Volver a iniciar sesión"
     },
-
     "success": {
       "title": "Revisa tu email",
       "description": "Hemos enviado un enlace para restablecer la contraseña a",
@@ -301,7 +277,6 @@
   "login": {
     "title": "Bienvenido de nuevo",
     "subtitle": "Inicia sesión para continuar",
-
     "form": {
       "email": {
         "label": "Email",
@@ -313,33 +288,28 @@
         "forgot": "¿Has olvidado tu contraseña?"
       }
     },
-
     "actions": {
       "signIn": "Iniciar sesión",
       "signingIn": "Iniciando sesión..."
     },
-
     "validation": {
       "emailRequired": "El email es obligatorio",
       "emailInvalid": "Por favor, introduce un email válido",
       "passwordRequired": "La contraseña es obligatoria",
       "passwordMin": "La contraseña debe tener al menos {{min}} caracteres"
     },
-
     "footer": {
       "noAccount": "¿No tienes cuenta?",
       "createOne": "Crear una"
     },
-
     "demo": {
       "title": "Credenciales demo:",
       "credentials": "admin@example.com / password123"
     }
   },
-   "register": {
+  "register": {
     "title": "Crea tu cuenta",
     "subtitle": "Empieza a analizar los datos de tu tienda en minutos",
-
     "form": {
       "fullName": {
         "label": "Nombre completo",
@@ -368,12 +338,10 @@
         "privacyPolicy": "Política de privacidad"
       }
     },
-
     "actions": {
       "create": "Crear cuenta",
       "creating": "Creando cuenta..."
     },
-
     "validation": {
       "fullNameRequired": "El nombre completo es obligatorio",
       "fullNameInvalid": "Por favor, introduce tu nombre completo",
@@ -387,100 +355,71 @@
       "companyRequired": "El nombre de la empresa es obligatorio",
       "termsRequired": "Debes aceptar los términos y condiciones"
     },
-
     "footer": {
       "haveAccount": "¿Ya tienes una cuenta?",
       "signIn": "Iniciar sesión"
     }
   },
-   "dashboards": {
+  "dashboards": {
     "loading": "Cargando dashboards...",
-
     "title": "Dashboards",
     "subtitle": "Visualiza y gestiona tus dashboards de analítica.",
-
     "actions": {
       "new": "Nuevo dashboard"
     },
-
     "empty": {
       "title": "Aún no tienes dashboards",
       "description": "Crea tu primer dashboard subiendo datos o pulsa el botón para empezar.",
       "action": "Subir datos"
     },
-
     "badges": {
       "default": "Predeterminado"
     },
-
     "meta": {
       "updated": "Actualizado {{date}}",
       "kpis": "{{count}} KPI",
       "kpis_plural": "{{count}} KPIs"
     }
   },
-   "dashboardDetail": {
+  "dashboardDetail": {
     "loading": "Cargando dashboard...",
-
     "back": "Volver a dashboards",
-
+    "allData": "Todos los datos disponibles",
+    "filterActive": "filtro activo",
+    "noData": "No hay datos de pedidos en el rango seleccionado.",
+    "reportSaved": "Informe guardado",
+    "reportSavedWith": "Informe guardado ({{from}} → {{to}}) con análisis de IA incluido",
+    "viewReports": "Ver informes",
     "notFound": {
       "title": "Dashboard no encontrado",
       "description": "El dashboard que buscas no existe o ha sido eliminado.",
       "action": "Ver todos los dashboards"
     },
-
     "actions": {
-      "export": "Exportar",
+      "viewAI": "Ver análisis IA",
       "saveReport": "Guardar informe",
-      "explain": "Explicar resultados"
+      "saving": "Guardando...",
+      "saved": "Informe guardado"
     },
-
-    "filters": {
-      "dateRange": {
-        "placeholder": "Rango de fechas",
-        "options": {
-          "7d": "Últimos 7 días",
-          "30d": "Últimos 30 días",
-          "90d": "Últimos 90 días",
-          "1y": "Último año"
-        }
-      },
-      "category": {
-        "placeholder": "Categoría",
-        "options": {
-          "all": "Todas las categorías",
-          "apparel": "Ropa",
-          "electronics": "Electrónica",
-          "home": "Hogar y jardín"
-        }
-      }
+    "filter": {
+      "label": "Filtrar por rango",
+      "available": "Disponible: {{from}} – {{to}}",
+      "from": "Desde",
+      "to": "Hasta",
+      "apply": "Aplicar",
+      "reset": "Resetear"
     },
-
-    "dateRanges": {
-      "7d": "7 días",
-      "30d": "30 días",
-      "90d": "90 días",
-      "1y": "año"
-    },
-
+    "metrics": "Métricas",
     "charts": {
-      "revenue": {
-        "title": "Ingresos en el tiempo",
-        "subtitle": "Últimos {{range}}"
-      },
-      "orders": {
-        "title": "Pedidos por producto",
-        "subtitle": "Productos con mejor rendimiento"
-      },
-      "acquisition": {
-        "title": "Adquisición de clientes",
-        "subtitle": "Nuevos vs recurrentes"
-      },
-      "funnel": {
-        "title": "Embudo de conversión",
-        "subtitle": "Del visitante a la compra"
-      }
+      "revenueTime": "Revenue en el tiempo",
+      "revenueTimeSubtitle": "Evolución mensual",
+      "ordersTime": "Pedidos en el tiempo",
+      "ordersTimeSubtitle": "Volumen de pedidos",
+      "revenueChannel": "Revenue por canal",
+      "topProducts": "Top productos",
+      "topProductsSubtitle": "Por revenue generado",
+      "revenueCategory": "Revenue por categoría",
+      "topCountries": "Top países"
     }
   },
   "overview": {
@@ -488,23 +427,19 @@
       "title": "Bienvenido de nuevo, {{name}}",
       "subtitle": "Esto es lo que está pasando en {{tenant}} hoy."
     },
-
     "sections": {
       "keyMetrics": "Métricas clave",
       "continue": "Continúa donde lo dejaste",
       "latestInsights": "Últimos insights",
       "nextSteps": "Siguientes pasos"
     },
-
     "actions": {
       "viewAll": "Ver todo",
       "openDashboard": "Abrir dashboard"
     },
-
     "meta": {
       "lastUpdated": "Última actualización {{date}}"
     },
-
     "charts": {
       "revenue": {
         "title": "Tendencia de ingresos",
@@ -515,11 +450,9 @@
         "subtitle": "Este mes"
       }
     },
-
     "insights": {
       "empty": "Aún no hay insights. Sube más datos para generarlos."
     },
-
     "nextActions": {
       "upload": {
         "title": "Subir nuevos datos",
@@ -535,10 +468,56 @@
       }
     }
   },
-   "profile": {
+  "imports": {
+    "title": "Imports",
+    "subtitle": "Gestiona los ficheros que has subido. Usa la preview para ver el archivo y la revisión manual para corregir columnas.",
+    "upload": "Subir datos",
+    "empty": {
+      "title": "No tienes imports aún",
+      "description": "Sube tu primer fichero CSV o Excel para empezar a analizar tus datos."
+    },
+    "status": {
+      "completed": "Completado",
+      "needs_review": "Revisar columnas",
+      "failed": "Fallido",
+      "completed_with_errors": "Con errores",
+      "processing": "Procesando"
+    },
+    "preview": {
+      "raw": "Preview raw",
+      "normalized": "Normalizada",
+      "hide": "Ocultar",
+      "loading": "Cargando previsualización...",
+      "error": "No se pudo cargar la previsualización.",
+      "empty": "No hay datos para previsualizar en este import."
+    },
+    "mapping": {
+      "button": "Revisar columnas",
+      "title": "Revisar asignación de columnas",
+      "description": "Comprueba y corrige a qué campo del sistema corresponde cada columna de tu archivo.",
+      "loading": "Analizando columnas del archivo...",
+      "detectedType": "Tipo detectado",
+      "confidence": "Confianza de detección",
+      "missingRequired": "Campos obligatorios sin asignar",
+      "columnHeader": "Columna en tu archivo",
+      "fieldHeader": "Campo del sistema",
+      "ignoreColumn": "— Ignorar esta columna —",
+      "requiredField": "Campo obligatorio — debe estar asignado",
+      "legend": "Las filas en rojo son campos obligatorios. Las columnas marcadas como \"Ignorar\" no se importarán.",
+      "cancel": "Cancelar",
+      "apply": "Aplicar y reprocesar",
+      "applying": "Aplicando..."
+    },
+    "delete": {
+      "confirm": "¿Eliminar \"{{name}}\"?\n\nSe eliminarán todos los datos asociados.",
+      "willDelete": "DASHBOARDS QUE SE ELIMINARÁN",
+      "willBeIncomplete": "DASHBOARDS QUE QUEDARÁN INCOMPLETOS",
+      "error": "Error al eliminar."
+    }
+  },
+  "profile": {
     "title": "Perfil y ajustes",
     "subtitle": "Gestiona la configuración y preferencias de tu cuenta.",
-
     "tabs": {
       "profile": "Perfil",
       "company": "Empresa",
@@ -546,37 +525,31 @@
       "billing": "Facturación",
       "members": "Miembros"
     },
-
     "fields": {
       "fullName": "Nombre completo",
       "email": "Email",
       "role": "Rol",
       "companyName": "Nombre de la empresa"
     },
-
     "roles": {
       "admin": "Admin",
       "collaborator": "Colaborador"
     },
-
     "actions": {
       "saveChanges": "Guardar cambios",
       "saving": "Guardando...",
       "saved": "Guardado"
     },
-
     "profileSection": {
       "title": "Información personal",
       "emailLocked": "El email no se puede cambiar"
     },
-
     "companySection": {
       "title": "Información de la empresa",
       "currentPlan": "Plan actual",
       "dataRetention": "Retención de datos",
       "retentionValue": "{{days}} días"
     },
-
     "company": {
       "plans": {
         "free": "Gratis",
@@ -584,28 +557,24 @@
         "enterprise": "Enterprise"
       }
     },
-
     "securitySection": {
       "changePassword": "Cambiar contraseña",
       "currentPassword": "Contraseña actual",
       "newPassword": "Nueva contraseña",
       "confirmNewPassword": "Confirmar nueva contraseña",
       "updatePassword": "Actualizar contraseña",
-
       "activeSessions": "Sesiones activas",
       "currentSession": "Sesión actual",
       "lastActive": "Última actividad: {{value}}",
       "justNow": "Ahora mismo",
       "active": "Activa"
     },
-
     "billingSection": {
       "title": "Facturación y suscripción",
       "comingSoon": "La funcionalidad de facturación estará disponible pronto.",
       "description": "Gestiona aquí tu suscripción y métodos de pago.",
       "adminOnly": "Solo los administradores pueden acceder a la configuración de facturación."
     },
-
     "membersSection": {
       "title": "Miembros del equipo",
       "invite": "Invitar miembro",
@@ -614,70 +583,63 @@
   },
   "reports": {
     "loading": "Cargando informes...",
-
     "title": "Informes guardados",
     "subtitle": "Consulta tus snapshots y reportes guardados de dashboards.",
-
     "empty": {
       "title": "No hay informes guardados",
       "description": "Guarda un snapshot de un dashboard para crear tu primer informe.",
       "action": "Ver dashboards"
     },
-
     "table": {
       "reportName": "Nombre del informe",
       "dashboard": "Dashboard",
       "kpiSummary": "Resumen KPIs",
       "created": "Creado"
     },
-
     "actions": {
-      "open": "Abrir"
+      "open": "Abrir",
+      "delete": "Eliminar"
+    },
+    "period": {
+      "allData": "Todos los datos",
+      "range": "{{from}} → {{to}}"
     }
   },
   "upload": {
     "title": "Subir datos",
     "subtitle": "Sube los datos de tu tienda para generar dashboards e insights.",
-
     "dropzone": {
       "title": "Suelta tu archivo aquí",
       "subtitle": "o haz clic para buscar",
       "uploading": "Subiendo..."
     },
-
     "formats": {
       "csv": "CSV",
       "excel": "Excel",
       "json": "JSON"
     },
-
     "validation": {
       "type": "Por favor, sube un archivo CSV, Excel o JSON.",
       "size": "El archivo debe pesar menos de {{max}}MB."
     },
-
     "errors": {
       "uploadFailed": "La subida ha fallado. Por favor, inténtalo de nuevo.",
       "dismiss": "Cerrar error"
     },
-
     "success": {
       "title": "¡Subida completada!",
       "subtitle": "Tus datos se han procesado y están listos para analizar.",
-
       "summary": {
         "dataset": "Dataset",
         "fileType": "Tipo de archivo",
         "rows": "Filas",
         "columns": "Columnas"
       },
-
       "actions": {
         "viewDashboards": "Ver dashboards",
         "uploadAnother": "Subir otro"
       }
     },
-
     "tips": {
       "title": "Consejos de formato de datos",
       "items": {
@@ -708,7 +670,6 @@
       "14": { "title": "Legislación aplicable", "content": "Estos Términos se rigen por la legislación española y europea." }
     }
   },
-
   "privacy": {
     "title": "Política de Privacidad",
     "subtitle": "Información sobre el tratamiento de datos personales en CommerceIQ.",
