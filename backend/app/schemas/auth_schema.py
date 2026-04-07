@@ -10,12 +10,31 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     full_name: str | None = None
+    role: str = "admin"       # "admin" | "analyst"
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserResponse(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    email: str
+    full_name: str | None
+    is_active: bool
+    role: str = "admin"
+    team_access: bool = False
+    company_name: str | None = None
+
+    class Config:
+        from_attributes = True
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
@@ -42,24 +61,6 @@ class ChangePasswordRequest(BaseModel):
             raise ValueError("Debes confirmar la nueva contraseña")
         return value
 
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-
-class UserResponse(BaseModel):
-    id: UUID
-    tenant_id: UUID
-    email: str
-    full_name: str | None
-    is_active: bool
-    role: str = "admin"
-    company_name: str | None = None
-
-    class Config:
-        from_attributes = True
-        
 class UpdateMeRequest(BaseModel):
     full_name: str
 

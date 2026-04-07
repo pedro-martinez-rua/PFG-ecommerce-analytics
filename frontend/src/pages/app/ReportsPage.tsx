@@ -2,22 +2,21 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Link } from '@/components/Link';
 import { Button } from '@/components/ui/button';
-import { getReports, deleteReport } from '@/lib/api';
+import { getReports, deleteReport, shareReport } from '@/lib/api';
 import { SavedReport } from '@/lib/types';
 import { EmptyState, PageLoading } from '@/components/shared';
 import {
   FileText, Calendar, Trash2, Sparkles,
-  TrendingUp, ChevronRight, Clock
+  TrendingUp, ChevronRight, Clock, Users, Share2
 } from 'lucide-react';
 
-// KPIs resumidos que se muestran en la tarjeta de lista
 const KPI_SUMMARY_KEYS: Record<string, { label: string; format: 'currency' | 'number' | 'percentage' }> = {
-  total_revenue:        { label: 'Revenue',        format: 'currency' },
-  order_count:          { label: 'Pedidos',         format: 'number' },
-  avg_order_value:      { label: 'AOV',             format: 'currency' },
-  gross_margin_pct:     { label: 'Margen',          format: 'percentage' },
-  repeat_purchase_rate: { label: 'Recompra',        format: 'percentage' },
-  unique_customers:     { label: 'Clientes',        format: 'number' },
+  total_revenue:        { label: 'Revenue',   format: 'currency' },
+  order_count:          { label: 'Pedidos',   format: 'number' },
+  avg_order_value:      { label: 'AOV',       format: 'currency' },
+  gross_margin_pct:     { label: 'Margen',    format: 'percentage' },
+  repeat_purchase_rate: { label: 'Recompra',  format: 'percentage' },
+  unique_customers:     { label: 'Clientes',  format: 'number' },
 };
 
 function formatVal(value: number, format: string): string {
@@ -35,11 +34,15 @@ function formatVal(value: number, format: string): string {
 function ReportCard({
   report,
   onDelete,
+  onShareToggle,
 }: {
   report: SavedReport;
   onDelete: () => void;
+  onShareToggle: (shared: boolean) => void;
 }) {
-  const [deleting, setDeleting] = useState(false);
+  const [deleting, setDeleting]     = useState(false);
+  const [sharing, setSharing]       = useState(false);
+  const shared = report.shared_with_team;
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -55,7 +58,20 @@ function ReportCard({
     }
   };
 
-  // KPI pills para la previsualización rápida en la lista
+  const handleShare = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSharing(true);
+    try {
+      await shareReport(report.id, !shared);
+      onShareToggle(!shared);
+    } catch {
+      alert('Error al cambiar el estado de compartición.');
+    } finally {
+      setSharing(false);
+    }
+  };
+
   const kpiPills = Object.entries(KPI_SUMMARY_KEYS)
     .map(([key, cfg]) => {
       const d = report.kpi_snapshot?.[key];
@@ -71,15 +87,22 @@ function ReportCard({
     >
       <div className="p-5">
         <div className="flex items-start justify-between gap-4">
-          {/* Icono + info */}
           <div className="flex items-start gap-3 flex-1 min-w-0">
             <div className="bg-secondary/10 rounded-lg p-2 mt-0.5 shrink-0">
               <FileText className="h-4 w-4 text-secondary" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-foreground group-hover:text-secondary transition-colors truncate">
-                {report.dashboard_name}
-              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-semibold text-foreground group-hover:text-secondary transition-colors truncate">
+                  {report.dashboard_name}
+                </p>
+                {shared && (
+                  <span className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
+                    <Users className="h-3 w-3" />
+                    Compartido
+                  </span>
+                )}
+              </div>
               <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground mt-1">
                 {report.date_from && report.date_to ? (
                   <span className="flex items-center gap-1">
@@ -108,6 +131,22 @@ function ReportCard({
 
           {/* Acciones */}
           <div className="flex items-center gap-1 shrink-0">
+            {/* Compartir */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-8 w-8 transition-all ${
+                shared
+                  ? 'text-primary opacity-100'
+                  : 'text-muted-foreground opacity-0 group-hover:opacity-100'
+              }`}
+              onClick={handleShare}
+              disabled={sharing}
+              title={shared ? 'Dejar de compartir con el equipo' : 'Compartir con el equipo'}
+            >
+              <Share2 className="h-4 w-4" />
+            </Button>
+            {/* Eliminar */}
             <Button
               variant="ghost"
               size="icon"
@@ -122,7 +161,6 @@ function ReportCard({
           </div>
         </div>
 
-        {/* KPI pills */}
         {kpiPills.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-3 pl-11">
             {kpiPills.map(k => (
@@ -140,8 +178,8 @@ function ReportCard({
 
 export function ReportsPage() {
   const navigate = useNavigate();
-  const [reports, setReports]   = useState<SavedReport[]>([]);
-  const [loading, setLoading]   = useState(true);
+  const [reports, setReports] = useState<SavedReport[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     getReports()
@@ -153,36 +191,25 @@ export function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground mb-1">
-            Informes guardados
-          </h1>
+          <h1 className="text-2xl font-bold text-foreground mb-1">Informes guardados</h1>
           <p className="text-muted-foreground">
-            Snapshots de tus dashboards con KPIs y análisis de IA incluidos.
+            Snapshots de tus dashboards con KPIs, gráficas y análisis de IA incluidos.
           </p>
         </div>
-        <Button
-          variant="outline"
-          className="gap-2"
-          onClick={() => navigate('/app/dashboards')}
-        >
+        <Button variant="outline" className="gap-2" onClick={() => navigate('/app/dashboards')}>
           <TrendingUp className="h-4 w-4" />
           Ir a dashboards
         </Button>
       </div>
 
-      {/* Lista */}
       {reports.length === 0 ? (
         <EmptyState
           icon={FileText}
           title="No tienes informes aún"
-          description='Abre un dashboard y pulsa "Guardar informe" para crear un snapshot con KPIs y análisis de IA.'
-          action={{
-            label: 'Ir a dashboards',
-            onClick: () => navigate('/app/dashboards'),
-          }}
+          description='Abre un dashboard y pulsa "Guardar informe" para crear un snapshot con KPIs, gráficas y análisis de IA.'
+          action={{ label: 'Ir a dashboards', onClick: () => navigate('/app/dashboards') }}
         />
       ) : (
         <div className="space-y-3">
@@ -191,6 +218,11 @@ export function ReportsPage() {
               key={report.id}
               report={report}
               onDelete={() => setReports(prev => prev.filter(r => r.id !== report.id))}
+              onShareToggle={(shared) =>
+                setReports(prev =>
+                  prev.map(r => r.id === report.id ? { ...r, shared_with_team: shared } : r)
+                )
+              }
             />
           ))}
         </div>

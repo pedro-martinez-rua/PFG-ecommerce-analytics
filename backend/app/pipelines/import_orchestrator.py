@@ -68,6 +68,7 @@ def _generate_dedup_key(transformed: dict) -> str | None:
 def run_import(
     db: Session,
     tenant_id: str,
+    user_id: str,
     filename: str,
     file_content: bytes
 ) -> dict:
@@ -76,6 +77,7 @@ def run_import(
 
     import_record = Import(
         tenant_id=tenant_id,
+        user_id=user_id,
         filename=filename,
         file_format=file_format,
         file_size_bytes=file_size,
@@ -102,11 +104,12 @@ def reprocess_import_with_mapping(
     db: Session,
     tenant_id: str,
     import_id: str,
+    user_id: str,
     sheet_name: str | None,
     upload_type: str | None,
     mapping: dict[str, str | None],
 ) -> dict:
-    import_record = db.query(Import).filter_by(id=import_id, tenant_id=tenant_id).first()
+    import_record = db.query(Import).filter_by(id=import_id, tenant_id=tenant_id, user_id=user_id).first()
     if not import_record:
         raise ValueError("Import no encontrado")
 

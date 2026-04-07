@@ -24,6 +24,8 @@ import {
   DashboardsPage,
   DashboardDetailPage,
   ReportsPage,
+  TeamPage,
+  TeamReportDetailPage,
   ProfilePage,
   ImportsPage,
   ReportDetailPage,
@@ -195,6 +197,28 @@ export default function App() {
           <RequireAuth>
             <AppLayout>
               <ReportsPage />
+            </AppLayout>
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/app/team"
+        element={
+          <RequireAuth>
+            <AppLayout>
+              <TeamPage />
+            </AppLayout>
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/app/team/reports/:id"
+        element={
+          <RequireAuth>
+            <AppLayout>
+              <TeamReportDetailPage />
             </AppLayout>
           </RequireAuth>
         }

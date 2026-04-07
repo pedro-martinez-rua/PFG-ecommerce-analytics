@@ -2,16 +2,14 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Link } from '@/components/Link';
 import { Button } from '@/components/ui/button';
-import { getReport } from '@/lib/api';
-import { SavedReport, KPI, ChartPoint } from '@/lib/types';
+import { getTeamReport } from '@/lib/api';
+import { TeamReport, KPI, ChartPoint } from '@/lib/types';
 import { KpiCard, ChartCard, PageLoading } from '@/components/shared';
 import {
   ArrowLeft, Calendar, Sparkles, FileText,
   TrendingUp, Users, Package, Truck,
   Clock, CheckCircle2, BarChart2
 } from 'lucide-react';
-
-// ─── Mapeo KPI snapshot → KpiCard ────────────────────────────────────
 
 const KPI_CONFIG: Array<{
   key: string;
@@ -42,8 +40,12 @@ function mapKpis(snapshot: Record<string, any>): KPI[] {
       if (!d || d.availability === 'missing' || d.value === null) return null;
       const change = d.growth_pct ?? 0;
       const positive = invert ? change < 0 : change > 0;
+
       return {
-        id: key, name, format, tenantId: '',
+        id: key,
+        name,
+        format,
+        tenantId: '',
         value: d.value,
         previousValue: d.vs_previous ?? d.value,
         change: Math.abs(change),
@@ -52,8 +54,6 @@ function mapKpis(snapshot: Record<string, any>): KPI[] {
     })
     .filter(Boolean) as KPI[];
 }
-
-// ─── Grupos de KPIs ───────────────────────────────────────────────────
 
 const KPI_GROUPS = [
   {
@@ -78,15 +78,12 @@ const KPI_GROUPS = [
   },
 ];
 
-// ─── Renderizado de markdown simple ──────────────────────────────────
-
 function MarkdownText({ text }: { text: string }) {
   const lines = text.split('\n');
 
   return (
     <div className="space-y-2">
       {lines.map((line, i) => {
-        // Cabecera en negrita: **Texto**
         if (/^\*\*(.+)\*\*$/.test(line.trim())) {
           return (
             <h3 key={i} className="text-base font-semibold text-foreground mt-5 first:mt-0">
@@ -95,10 +92,8 @@ function MarkdownText({ text }: { text: string }) {
           );
         }
 
-        // Línea vacía
         if (!line.trim()) return <div key={i} className="h-1" />;
 
-        // Ítem de lista numerada o con *
         if (/^\d+\.\s/.test(line) || /^\*\s/.test(line)) {
           const content = line.replace(/^\d+\.\s/, '').replace(/^\*\s/, '');
           const parts = content.split(/(\*\*[^*]+\*\*)/g);
@@ -113,7 +108,6 @@ function MarkdownText({ text }: { text: string }) {
           );
         }
 
-        // Texto normal con negritas inline
         const parts = line.split(/(\*\*[^*]+\*\*)/g);
         return (
           <p key={i} className="text-sm text-muted-foreground leading-relaxed">
@@ -129,44 +123,54 @@ function MarkdownText({ text }: { text: string }) {
   );
 }
 
-// ─── Página ───────────────────────────────────────────────────────────
-
-export function ReportDetailPage() {
+export function TeamReportDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [report, setReport] = useState<SavedReport | null>(null);
+  const [report, setReport] = useState<TeamReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
-    getReport(id)
+
+    setLoading(true);
+    setError(null);
+
+    getTeamReport(id)
       .then(setReport)
+      .catch((err) => {
+        setReport(null);
+        setError(err instanceof Error ? err.message : 'Error al cargar el informe compartido');
+      })
       .finally(() => setLoading(false));
   }, [id]);
 
-  if (loading) return <PageLoading message="Cargando informe..." />;
+  if (loading) return <PageLoading message="Cargando informe compartido..." />;
 
-  if (!report) return (
-    <div className="text-center py-20">
-      <p className="text-muted-foreground">Informe no encontrado.</p>
-      <Link href="/app/reports">
-        <Button variant="ghost" className="mt-4">Volver a informes</Button>
-      </Link>
-    </div>
-  );
+  if (!report) {
+    return (
+      <div className="text-center py-20">
+        <p className="text-muted-foreground">
+          {error || 'Informe compartido no encontrado.'}
+        </p>
+        <Link href="/app/team">
+          <Button variant="ghost" className="mt-4">Volver a Team</Button>
+        </Link>
+      </div>
+    );
+  }
 
   const kpis = report.kpi_snapshot ? mapKpis(report.kpi_snapshot) : [];
   const kpiMap = Object.fromEntries(kpis.map(k => [k.id, k]));
 
   return (
     <div className="space-y-8 max-w-5xl">
-
-      {/* ── Header ─────────────────────────────────────────────── */}
       <div className="flex items-start gap-3">
-        <Link href="/app/reports">
+        <Link href="/app/team">
           <Button variant="ghost" size="icon" className="mt-0.5 shrink-0">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
+
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             <FileText className="h-5 w-5 text-muted-foreground" />
@@ -174,6 +178,7 @@ export function ReportDetailPage() {
               {report.dashboard_name}
             </h1>
           </div>
+
           <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
             {report.date_from && report.date_to ? (
               <span className="flex items-center gap-1">
@@ -183,23 +188,36 @@ export function ReportDetailPage() {
             ) : (
               <span>Todos los datos disponibles</span>
             )}
+
             <span className="flex items-center gap-1">
               <Clock className="h-3.5 w-3.5" />
-              Guardado el{' '}
+              Compartido el{' '}
               {new Date(report.created_at).toLocaleDateString('es-ES', {
-                day: '2-digit', month: 'long', year: 'numeric',
-                hour: '2-digit', minute: '2-digit',
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
               })}
             </span>
+
             <span className="flex items-center gap-1 text-success">
               <CheckCircle2 className="h-3.5 w-3.5" />
-              Snapshot guardado
+              Snapshot compartido
             </span>
           </div>
+
+          {(report.created_by_name || report.created_by_email) && (
+            <div className="mt-2 text-sm text-muted-foreground">
+              Compartido por{' '}
+              <span className="font-medium text-foreground">
+                {report.created_by_name || report.created_by_email}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── KPIs agrupados ─────────────────────────────────────── */}
       {kpis.length > 0 && (
         <div className="space-y-6">
           {KPI_GROUPS.map(group => {
@@ -218,6 +236,7 @@ export function ReportDetailPage() {
                     {group.title}
                   </h2>
                 </div>
+
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                   {groupKpis.map(kpi => (
                     <KpiCard key={kpi.id} kpi={kpi} />
@@ -229,14 +248,19 @@ export function ReportDetailPage() {
         </div>
       )}
 
-      {/* ── Gráficas del snapshot ─────────────────────────────────── */}
       {report.charts_snapshot && (() => {
         const c = report.charts_snapshot as Record<string, ChartPoint[]>;
         const hasCharts = [
-          c.revenue_over_time, c.orders_over_time, c.revenue_by_channel,
-          c.top_products_revenue, c.revenue_by_category, c.revenue_by_country,
+          c.revenue_over_time,
+          c.orders_over_time,
+          c.revenue_by_channel,
+          c.top_products_revenue,
+          c.revenue_by_category,
+          c.revenue_by_country,
         ].some(d => d && d.length > 0);
+
         if (!hasCharts) return null;
+
         return (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
@@ -245,40 +269,33 @@ export function ReportDetailPage() {
                 Gráficas
               </h2>
             </div>
+
             <section className="grid lg:grid-cols-2 gap-6">
               {c.revenue_over_time?.length > 0 && (
-                <ChartCard title="Revenue en el tiempo" subtitle="Evolución del periodo"
-                  data={c.revenue_over_time} valuePrefix="€" />
+                <ChartCard title="Revenue en el tiempo" subtitle="Evolución del periodo" data={c.revenue_over_time} valuePrefix="€" />
               )}
               {c.orders_over_time?.length > 0 && (
-                <ChartCard title="Pedidos en el tiempo" subtitle="Volumen de pedidos"
-                  data={c.orders_over_time} />
+                <ChartCard title="Pedidos en el tiempo" subtitle="Volumen de pedidos" data={c.orders_over_time} />
               )}
               {c.revenue_by_channel?.length > 0 && (
-                <ChartCard title="Revenue por canal" data={c.revenue_by_channel}
-                  type="bar" valuePrefix="€" />
+                <ChartCard title="Revenue por canal" data={c.revenue_by_channel} type="bar" valuePrefix="€" />
               )}
               {c.top_products_revenue?.length > 0 && (
-                <ChartCard title="Top productos" subtitle="Por revenue generado"
-                  data={c.top_products_revenue} type="bar" valuePrefix="€" />
+                <ChartCard title="Top productos" subtitle="Por revenue generado" data={c.top_products_revenue} type="bar" valuePrefix="€" />
               )}
               {c.revenue_by_category?.length > 0 && (
-                <ChartCard title="Revenue por categoría" data={c.revenue_by_category}
-                  type="bar" valuePrefix="€" />
+                <ChartCard title="Revenue por categoría" data={c.revenue_by_category} type="bar" valuePrefix="€" />
               )}
               {c.revenue_by_country?.length > 0 && (
-                <ChartCard title="Top países" data={c.revenue_by_country}
-                  type="bar" valuePrefix="€" />
+                <ChartCard title="Top países" data={c.revenue_by_country} type="bar" valuePrefix="€" />
               )}
             </section>
           </div>
         );
       })()}
 
-      {/* ── Análisis de IA ─────────────────────────────────────── */}
       {report.insights && (
         <div className="bg-background border rounded-xl overflow-hidden">
-          {/* Cabecera */}
           <div className="flex items-center gap-2 px-6 py-4 border-b bg-secondary/5">
             <Sparkles className="h-4 w-4 text-secondary" />
             <h2 className="font-semibold text-foreground">Análisis de IA</h2>
@@ -287,12 +304,10 @@ export function ReportDetailPage() {
             </span>
           </div>
 
-          {/* Contenido del análisis */}
           <div className="px-6 py-6">
             <MarkdownText text={report.insights} />
           </div>
 
-          {/* Disclaimer */}
           <div className="px-6 py-3 border-t bg-muted/30">
             <p className="text-xs text-muted-foreground">
               Este análisis fue generado automáticamente a partir de métricas agregadas.
@@ -302,7 +317,6 @@ export function ReportDetailPage() {
         </div>
       )}
 
-      {/* ── Sin análisis de IA ─────────────────────────────────── */}
       {!report.insights && (
         <div className="bg-muted/30 border border-dashed rounded-xl px-6 py-8 text-center">
           <Sparkles className="h-8 w-8 mx-auto text-muted-foreground mb-2 opacity-50" />
@@ -312,7 +326,6 @@ export function ReportDetailPage() {
         </div>
       )}
 
-      {/* ── Sin KPIs ───────────────────────────────────────────── */}
       {kpis.length === 0 && !report.insights && (
         <div className="text-center py-12 text-muted-foreground">
           <p>Este informe no tiene datos guardados.</p>

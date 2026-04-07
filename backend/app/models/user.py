@@ -7,23 +7,16 @@ from app.db.database import Base
 
 
 class User(Base):
-    """
-    Usuario de la plataforma. Hay uno por tenant.
-    El tenant_id vincula el usuario con su empresa.
-    El JWT incluye el tenant_id para que todos los endpoints
-    puedan filtrar datos sin que el usuario lo controle.
-    """
     __tablename__ = "users"
 
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id       = Column(UUID(as_uuid=True), ForeignKey("tenants.id"),
-                             nullable=False, index=True)
+    tenant_id       = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
     email           = Column(String, nullable=False, unique=True, index=True)
     hashed_password = Column(String, nullable=False)
     full_name       = Column(String, nullable=True)
+    role            = Column(String, default="admin", nullable=False)   # "admin" | "analyst"
     is_active       = Column(Boolean, nullable=False, default=True)
+    team_access     = Column(Boolean, nullable=False, default=False)    # admin aprueba el acceso al equipo
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
-    role = Column(String, default="admin", nullable=False)
-    
 
     tenant = relationship("Tenant", back_populates="users")

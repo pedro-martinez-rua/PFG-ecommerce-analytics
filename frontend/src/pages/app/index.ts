@@ -6,3 +6,5 @@ export { ReportsPage } from './ReportsPage';
 export { ProfilePage } from './ProfilePage';
 export { ImportsPage } from './ImportsPage';
 export { ReportDetailPage } from './ReportDetailPage';
+export { TeamPage } from './TeamPage';
+export { TeamReportDetailPage } from './TeamReportDetailPage';

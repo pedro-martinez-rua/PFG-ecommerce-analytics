@@ -27,6 +27,7 @@ def get_kpis(
         date_from=date_from,
         date_to=date_to,
         import_ids=import_ids,
+        user_id=str(current_user.id),
     )
 
 
@@ -46,6 +47,7 @@ def get_insights(
         date_from=date_from,
         date_to=date_to,
         import_ids=import_ids,
+        user_id=str(current_user.id),
     )
 
     insights = generate_insights(

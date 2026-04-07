@@ -1,11 +1,11 @@
-import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
-
-import { useAuth } from '@/hooks/useAuth';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useAuth } from '@/hooks/useAuth';
+import { authService } from '@/lib/auth';
+import { getTeamMembers, toggleTeamAccess, removeMember } from '@/lib/api';
+import type { TeamMember } from '@/lib/types';
 import {
   User,
   Building2,
@@ -14,155 +14,208 @@ import {
   Users,
   CheckCircle2,
   AlertCircle,
+  Trash2,
 } from 'lucide-react';
 
-import { authService } from '@/lib/auth'
+type TabKey = 'profile' | 'company' | 'security' | 'billing' | 'members';
+
+const TAB_LABELS: Record<TabKey, string> = {
+  profile: 'Perfil',
+  company: 'Empresa',
+  security: 'Seguridad',
+  billing: 'Facturación',
+  members: 'Miembros',
+};
+
+function TabButton({
+  active,
+  onClick,
+  icon: Icon,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ComponentType<{ className?: string }>;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition-colors border',
+        active
+          ? 'bg-background text-foreground border-border shadow-sm'
+          : 'bg-transparent text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/50',
+      ].join(' ')}
+    >
+      <Icon className="h-4 w-4" />
+      {children}
+    </button>
+  );
+}
+
+function SectionCard({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="bg-background border rounded-2xl p-6 space-y-5">
+      <div>
+        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+        {description && (
+          <p className="text-sm text-muted-foreground mt-1">{description}</p>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  description,
+  children,
+}: {
+  label: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="text-sm font-medium text-foreground">{label}</label>
+      {children}
+      {description && (
+        <p className="text-xs text-muted-foreground">{description}</p>
+      )}
+    </div>
+  );
+}
 
 export function ProfilePage() {
-  const { t } = useTranslation();
+  const { user, tenant, isAdmin, updateMe } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const { user, tenant, isAdmin } = useAuth();
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [fullName, setFullName] = useState(user?.fullName || '')
-  const [profileError, setProfileError] = useState<string | null>(null)
-  const [profileSuccess, setProfileSuccess] = useState<string | null>(null)
+  const requestedTab = (searchParams.get('tab') || 'profile') as TabKey;
+  const safeTab: TabKey =
+    requestedTab === 'members' && !isAdmin ? 'profile' : requestedTab;
 
-  const handleSave = async () => {
-    setProfileError(null)
-    setProfileSuccess(null)
+  const [activeTab, setActiveTab] = useState<TabKey>(safeTab);
 
-    const session = authService.getSession()
-    const token = session?.token
+  useEffect(() => {
+    if (requestedTab !== safeTab) {
+      const next = new URLSearchParams(searchParams);
+      if (safeTab === 'profile') next.delete('tab');
+      else next.set('tab', safeTab);
+      setSearchParams(next, { replace: true });
+    }
+    setActiveTab(safeTab);
+  }, [requestedTab, safeTab, searchParams, setSearchParams]);
 
-    if (!token) {
-      setProfileError('Sesión no válida. Inicia sesión de nuevo')
-      return
+  const changeTab = (tab: TabKey) => {
+    const next = new URLSearchParams(searchParams);
+    if (tab === 'profile') next.delete('tab');
+    else next.set('tab', tab);
+    setSearchParams(next, { replace: true });
+    setActiveTab(tab);
+  };
+
+  // ── Perfil ────────────────────────────────────────────────────────
+  const [fullName, setFullName] = useState(user?.fullName || '');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFullName(user?.fullName || '');
+  }, [user?.fullName]);
+
+  const handleSaveProfile = async () => {
+    setProfileError(null);
+    setProfileSaved(false);
+    setSavingProfile(true);
+
+    const cleaned = fullName.trim();
+    if (!cleaned) {
+      setSavingProfile(false);
+      setProfileError('El nombre no puede estar vacío.');
+      return;
     }
 
-    const trimmedName = fullName.trim()
+    const result = await updateMe({ full_name: cleaned });
 
-    if (!trimmedName) {
-      setProfileError('El nombre completo es obligatorio')
-      return
+    setSavingProfile(false);
+
+    if (!result.success) {
+      setProfileError(result.error || 'No se pudo actualizar el perfil');
+      return;
     }
 
-    if (trimmedName.length < 2) {
-      setProfileError('El nombre completo debe tener al menos 2 caracteres')
-      return
-    }
+    setProfileSaved(true);
+    setTimeout(() => setProfileSaved(false), 3000);
+  };
 
-    setSaving(true)
+  // ── Seguridad ─────────────────────────────────────────────────────
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
-    try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/me`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          full_name: trimmedName,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        let errorMessage = 'No se pudo actualizar el perfil'
-
-        if (typeof data.detail === 'string') {
-          errorMessage = data.detail
-        } else if (Array.isArray(data.detail) && data.detail.length > 0) {
-          errorMessage = data.detail.map((err: any) => err.msg).join(' · ')
-        }
-
-        throw new Error(errorMessage)
-      }
-
-      profileError && setProfileError(null)
-      setProfileSuccess('Perfil actualizado correctamente')
-      setSaved(true)
-      setTimeout(() => {
-        setSaved(false)
-        setProfileSuccess(null)
-      }, 3000)
-
-    } catch (error: any) {
-      setProfileError(error.message || 'No se pudo actualizar el perfil')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const roleLabel =
-    user?.role === 'admin'
-      ? t('profile.roles.admin')
-      : t('profile.roles.collaborator');
-
-  const planLabel = tenant?.plan
-    ? t(`profile.company.plans.${tenant.plan}`, {
-        defaultValue: tenant.plan.charAt(0).toUpperCase() + tenant.plan.slice(1),
-      })
-    : t('profile.company.plans.free');
-
-  const [currentPassword, setCurrentPassword] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmNewPassword, setConfirmNewPassword] = useState('')
-
-  const [passwordLoading, setPasswordLoading] = useState(false)
-  const [passwordError, setPasswordError] = useState<string | null>(null)
-  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
 
   const handleChangePassword = async () => {
-    setPasswordError(null)
-    setPasswordSuccess(null)
+    setPasswordError(null);
+    setPasswordSuccess(null);
 
-    const session = authService.getSession()
-    const token = session?.token
+    const token = authService.getSession()?.token;
 
     if (!token) {
-      setPasswordError('Sesión no válida. Inicia sesión de nuevo')
-      return
+      setPasswordError('Sesión no válida. Inicia sesión de nuevo.');
+      return;
     }
 
     if (!currentPassword || !newPassword || !confirmNewPassword) {
-      setPasswordError('Todos los campos son obligatorios')
-      return
+      setPasswordError('Todos los campos son obligatorios.');
+      return;
     }
 
     if (newPassword !== confirmNewPassword) {
-      setPasswordError('Las contraseñas no coinciden')
-      return
+      setPasswordError('Las contraseñas no coinciden.');
+      return;
     }
 
     if (currentPassword === newPassword) {
-      setPasswordError('La nueva contraseña no puede ser igual a la actual')
-      return
+      setPasswordError('La nueva contraseña no puede ser igual a la actual.');
+      return;
     }
 
-    // 👇 MÉTELO AQUÍ
     if (newPassword.length < 8) {
-      setPasswordError('La nueva contraseña debe tener al menos 8 caracteres')
-      return
+      setPasswordError('La nueva contraseña debe tener al menos 8 caracteres.');
+      return;
     }
 
     if (!/[A-Z]/.test(newPassword)) {
-      setPasswordError('La nueva contraseña debe incluir al menos una mayúscula')
-      return
+      setPasswordError('La nueva contraseña debe incluir al menos una mayúscula.');
+      return;
     }
 
     if (!/[a-z]/.test(newPassword)) {
-      setPasswordError('La nueva contraseña debe incluir al menos una minúscula')
-      return
+      setPasswordError('La nueva contraseña debe incluir al menos una minúscula.');
+      return;
     }
 
     if (!/\d/.test(newPassword)) {
-      setPasswordError('La nueva contraseña debe incluir al menos un número')
-      return
+      setPasswordError('La nueva contraseña debe incluir al menos un número.');
+      return;
     }
 
-    setPasswordLoading(true)
+    setPasswordLoading(true);
 
     try {
       const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/me/password`, {
@@ -176,320 +229,387 @@ export function ProfilePage() {
           new_password: newPassword,
           confirm_password: confirmNewPassword,
         }),
-      })
+      });
 
-      const data = await response.json()
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        let errorMessage = 'No se pudo actualizar la contraseña'
+        let errorMessage = 'No se pudo actualizar la contraseña';
 
         if (typeof data.detail === 'string') {
-          errorMessage = data.detail
+          errorMessage = data.detail;
         } else if (Array.isArray(data.detail) && data.detail.length > 0) {
-          errorMessage = data.detail.map((err: any) => err.msg).join(' · ')
+          errorMessage = data.detail.map((err: any) => err.msg).join(' · ');
         }
 
-        throw new Error(errorMessage)
+        throw new Error(errorMessage);
       }
 
-      setPasswordSuccess('Contraseña actualizada correctamente')
-      setCurrentPassword('')
-      setNewPassword('')
-      setConfirmNewPassword('')
+      setPasswordSuccess('Contraseña actualizada correctamente.');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
     } catch (error: any) {
-      setPasswordError(error.message || 'No se pudo actualizar la contraseña')
+      setPasswordError(error.message || 'No se pudo actualizar la contraseña');
     } finally {
-      setPasswordLoading(false)
+      setPasswordLoading(false);
     }
-  }
+  };
+
+  // ── Miembros ───────────────────────────────────────────────────────
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState<string | null>(null);
+  const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
+
+  const loadMembers = async () => {
+    if (!isAdmin) return;
+
+    setMembersLoading(true);
+    setMembersError(null);
+
+    try {
+      const data = await getTeamMembers();
+      setMembers(data);
+    } catch (error: any) {
+      setMembersError(error.message || 'No se pudieron cargar los miembros.');
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'members' && isAdmin) {
+      loadMembers();
+    }
+  }, [activeTab, isAdmin]);
+
+  const handleToggleMemberAccess = async (member: TeamMember) => {
+    setBusyMemberId(member.id);
+    setMembersError(null);
+
+    try {
+      const updated = await toggleTeamAccess(member.id, !member.team_access);
+      setMembers((prev) =>
+        prev.map((m) => (m.id === member.id ? updated : m))
+      );
+    } catch (error: any) {
+      setMembersError(error.message || 'No se pudo actualizar el acceso.');
+    } finally {
+      setBusyMemberId(null);
+    }
+  };
+
+  const handleRemoveMember = async (member: TeamMember) => {
+    const confirmed = window.confirm(
+      `¿Seguro que quieres desactivar a ${member.full_name || member.email}?`
+    );
+    if (!confirmed) return;
+
+    setBusyMemberId(member.id);
+    setMembersError(null);
+
+    try {
+      await removeMember(member.id);
+      setMembers((prev) => prev.filter((m) => m.id !== member.id));
+    } catch (error: any) {
+      setMembersError(error.message || 'No se pudo eliminar el miembro.');
+    } finally {
+      setBusyMemberId(null);
+    }
+  };
+
+  const visibleTabs = useMemo(() => {
+    const base: TabKey[] = ['profile', 'company', 'security', 'billing'];
+    if (isAdmin) base.push('members');
+    return base;
+  }, [isAdmin]);
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-5xl">
       <div>
-        <h1 className="text-2xl font-bold text-foreground mb-1">
-          {t('profile.title')}
-        </h1>
-        <p className="text-muted-foreground">{t('profile.subtitle')}</p>
+        <h1 className="text-3xl font-bold text-foreground">Perfil y ajustes</h1>
+        <p className="text-muted-foreground mt-1">
+          Gestiona la configuración y preferencias de tu cuenta.
+        </p>
       </div>
 
-      <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
-          <TabsTrigger value="profile" className="gap-2">
-            <User className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('profile.tabs.profile')}</span>
-          </TabsTrigger>
+      <div className="flex flex-wrap gap-2 rounded-2xl border bg-muted/30 p-2 w-fit">
+        {visibleTabs.includes('profile') && (
+          <TabButton
+            active={activeTab === 'profile'}
+            onClick={() => changeTab('profile')}
+            icon={User}
+          >
+            {TAB_LABELS.profile}
+          </TabButton>
+        )}
 
-          <TabsTrigger value="company" className="gap-2">
-            <Building2 className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('profile.tabs.company')}</span>
-          </TabsTrigger>
+        {visibleTabs.includes('company') && (
+          <TabButton
+            active={activeTab === 'company'}
+            onClick={() => changeTab('company')}
+            icon={Building2}
+          >
+            {TAB_LABELS.company}
+          </TabButton>
+        )}
 
-          <TabsTrigger value="security" className="gap-2">
-            <Shield className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('profile.tabs.security')}</span>
-          </TabsTrigger>
+        {visibleTabs.includes('security') && (
+          <TabButton
+            active={activeTab === 'security'}
+            onClick={() => changeTab('security')}
+            icon={Shield}
+          >
+            {TAB_LABELS.security}
+          </TabButton>
+        )}
 
-          <TabsTrigger value="billing" className="gap-2" disabled={!isAdmin}>
-            <CreditCard className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('profile.tabs.billing')}</span>
-          </TabsTrigger>
+        {visibleTabs.includes('billing') && (
+          <TabButton
+            active={activeTab === 'billing'}
+            onClick={() => changeTab('billing')}
+            icon={CreditCard}
+          >
+            {TAB_LABELS.billing}
+          </TabButton>
+        )}
 
-          <TabsTrigger value="members" className="gap-2" disabled={!isAdmin}>
-            <Users className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('profile.tabs.members')}</span>
-          </TabsTrigger>
-        </TabsList>
+        {visibleTabs.includes('members') && (
+          <TabButton
+            active={activeTab === 'members'}
+            onClick={() => changeTab('members')}
+            icon={Users}
+          >
+            {TAB_LABELS.members}
+          </TabButton>
+        )}
+      </div>
 
-        {/* Profile Tab */}
-        <TabsContent value="profile" className="space-y-6">
-          <div className="bg-background rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-foreground mb-4">
-              {t('profile.profileSection.title')}
-            </h2>
+      {activeTab === 'profile' && (
+        <SectionCard
+          title="Información personal"
+          description="Actualiza tu nombre visible dentro de la aplicación."
+        >
+          <div className="grid md:grid-cols-2 gap-5">
+            <Field label="Nombre completo">
+              <Input
+                id="fullName"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Tu nombre"
+              />
+            </Field>
 
-            <div className="space-y-4">
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="fullName">{t('profile.fields.fullName')}</Label>
-                  <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)}/>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">{t('profile.fields.email')}</Label>
-                  <Input id="email" type="email" defaultValue={user?.email} disabled />
-                  <p className="text-xs text-muted-foreground">
-                    {t('profile.profileSection.emailLocked')}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>{t('profile.fields.role')}</Label>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium ${
-                      user?.role === 'admin'
-                        ? 'bg-secondary/10 text-secondary'
-                        : 'bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    {roleLabel}
-                  </span>
-                </div>
-              </div>
-
-              <div className="pt-4 flex items-center gap-3">
-                <Button onClick={handleSave} disabled={saving}>
-                  {saving ? t('profile.actions.saving') : t('profile.actions.saveChanges')}
-                </Button>
-
-                {saved && (
-                  <span className="flex items-center gap-1 text-sm text-success">
-                    <CheckCircle2 className="h-4 w-4" />
-                    {t('profile.actions.saved')}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Company Tab */}
-        <TabsContent value="company" className="space-y-6">
-          <div className="bg-background rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-foreground mb-4">
-              {t('profile.companySection.title')}
-            </h2>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="companyName">{t('profile.fields.companyName')}</Label>
-                <Input id="companyName" defaultValue={tenant?.name} />
-              </div>
-
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>{t('profile.companySection.currentPlan')}</Label>
-                  <div className="px-3 py-2 rounded-md bg-muted text-sm">
-                    {planLabel}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>{t('profile.companySection.dataRetention')}</Label>
-                  <div className="px-3 py-2 rounded-md bg-muted text-sm">
-                    {t('profile.companySection.retentionValue', { days: 90 })}
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4">
-                <Button onClick={handleSave} disabled={saving}>
-                  {saving ? t('profile.actions.saving') : t('profile.actions.saveChanges')}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Security Tab */}
-        <TabsContent value="security" className="space-y-6">
-          <div className="bg-background rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-foreground mb-4">
-              {t('profile.securitySection.changePassword')}
-            </h2>
-
-            <div className="space-y-4 max-w-md">
-              <div className="space-y-2">
-                <Label htmlFor="currentPassword">
-                  {t('profile.securitySection.currentPassword')}
-                </Label>
-                <Input
-                  id="currentPassword"
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  autoComplete="current-password"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="newPassword">
-                  {t('profile.securitySection.newPassword')}
-                </Label>
-                <Input
-                  id="newPassword"
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmNewPassword">
-                  {t('profile.securitySection.confirmNewPassword')}
-                </Label>
-                <Input
-                  id="confirmNewPassword"
-                  type="password"
-                  value={confirmNewPassword}
-                  onChange={(e) => setConfirmNewPassword(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </div>
-
-              {passwordError && (
-                <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                  {passwordError}
-                </div>
-              )}
-
-              {passwordSuccess && (
-                <div className="rounded-lg border border-success/20 bg-success/10 px-3 py-2 text-sm text-success">
-                  {passwordSuccess}
-                </div>
-              )}
-
-              <div className="pt-4">
-                <Button onClick={handleChangePassword} disabled={passwordLoading}>
-                  {passwordLoading
-                    ? 'Actualizando...'
-                    : t('profile.securitySection.updatePassword')}
-                </Button>
-              </div>
-            </div>
+            <Field label="Correo electrónico" description="Este dato no se puede editar desde aquí.">
+              <Input value={user?.email || ''} disabled />
+            </Field>
           </div>
 
-          <div className="bg-background rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-foreground mb-4">
-              {t('profile.securitySection.activeSessions')}
-            </h2>
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <Button onClick={handleSaveProfile} disabled={savingProfile}>
+              {savingProfile ? 'Guardando...' : 'Guardar cambios'}
+            </Button>
 
+            {profileSaved && (
+              <span className="inline-flex items-center gap-1 text-sm text-green-600">
+                <CheckCircle2 className="h-4 w-4" />
+                Guardado
+              </span>
+            )}
+
+            {profileError && (
+              <span className="inline-flex items-center gap-1 text-sm text-red-600">
+                <AlertCircle className="h-4 w-4" />
+                {profileError}
+              </span>
+            )}
+          </div>
+        </SectionCard>
+      )}
+
+      {activeTab === 'company' && (
+        <SectionCard
+          title="Empresa"
+          description="Información organizativa asociada a tu tenant."
+        >
+          <div className="grid md:grid-cols-2 gap-5">
+            <Field label="Nombre de la empresa">
+              <Input value={tenant?.name || ''} disabled />
+            </Field>
+
+            <Field label="Rol en la empresa">
+              <Input value={user?.role || ''} disabled />
+            </Field>
+          </div>
+
+          <div className="text-sm text-muted-foreground">
+            Los analistas se registran con el nombre exacto de la empresa para unirse al tenant correcto.
+          </div>
+        </SectionCard>
+      )}
+
+      {activeTab === 'security' && (
+        <SectionCard
+          title="Seguridad"
+          description="Actualiza tu contraseña de acceso."
+        >
+          <div className="grid md:grid-cols-3 gap-5">
+            <Field label="Contraseña actual">
+              <Input
+                id="currentPassword"
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+              />
+            </Field>
+
+            <Field label="Nueva contraseña">
+              <Input
+                id="newPassword"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+            </Field>
+
+            <Field label="Confirmar nueva contraseña">
+              <Input
+                id="confirmNewPassword"
+                type="password"
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+              />
+            </Field>
+          </div>
+
+          <div className="text-xs text-muted-foreground">
+            La contraseña debe tener al menos 8 caracteres e incluir mayúsculas, minúsculas y números.
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <Button onClick={handleChangePassword} disabled={passwordLoading}>
+              {passwordLoading ? 'Actualizando...' : 'Actualizar contraseña'}
+            </Button>
+
+            {passwordSuccess && (
+              <span className="inline-flex items-center gap-1 text-sm text-green-600">
+                <CheckCircle2 className="h-4 w-4" />
+                {passwordSuccess}
+              </span>
+            )}
+
+            {passwordError && (
+              <span className="inline-flex items-center gap-1 text-sm text-red-600">
+                <AlertCircle className="h-4 w-4" />
+                {passwordError}
+              </span>
+            )}
+          </div>
+        </SectionCard>
+      )}
+
+      {activeTab === 'billing' && (
+        <SectionCard
+          title="Facturación"
+          description="Resumen informativo del plan actual."
+        >
+          <div className="grid md:grid-cols-2 gap-5">
+            <Field label="Plan actual">
+              <Input value="Plan profesional" disabled />
+            </Field>
+
+            <Field label="Estado">
+              <Input value="Activo" disabled />
+            </Field>
+          </div>
+
+          <p className="text-sm text-muted-foreground">
+            La gestión avanzada de facturación puede añadirse más adelante.
+          </p>
+        </SectionCard>
+      )}
+
+      {activeTab === 'members' && isAdmin && (
+        <SectionCard
+          title="Miembros del equipo"
+          description="Aquí puedes ver quién se ha unido al tenant y decidir quién tiene acceso a la pantalla de Equipo."
+        >
+          {membersLoading ? (
+            <div className="text-sm text-muted-foreground">Cargando miembros...</div>
+          ) : membersError ? (
+            <div className="inline-flex items-center gap-2 text-sm text-red-600">
+              <AlertCircle className="h-4 w-4" />
+              {membersError}
+            </div>
+          ) : members.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              No hay miembros registrados todavía.
+            </div>
+          ) : (
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted">
-                <div>
-                  <p className="font-medium text-foreground text-sm">
-                    {t('profile.securitySection.currentSession')}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t('profile.securitySection.lastActive', {
-                      value: t('profile.securitySection.justNow'),
-                    })}
-                  </p>
-                </div>
-                <span className="text-xs bg-success/10 text-success px-2 py-1 rounded">
-                  {t('profile.securitySection.active')}
-                </span>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
+              {members.map((member) => {
+                const isCurrentUser = member.id === user?.id;
+                const isBusy = busyMemberId === member.id;
 
-        {/* Billing Tab */}
-        <TabsContent value="billing" className="space-y-6">
-          {isAdmin ? (
-            <div className="bg-background rounded-lg border p-6">
-              <h2 className="text-lg font-semibold text-foreground mb-4">
-                {t('profile.billingSection.title')}
-              </h2>
-
-              <div className="bg-muted/50 rounded-lg p-6 text-center">
-                <AlertCircle className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-                <p className="text-muted-foreground">
-                  {t('profile.billingSection.comingSoon')}
-                </p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {t('profile.billingSection.description')}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-background rounded-lg border p-6">
-              <p className="text-muted-foreground">
-                {t('profile.billingSection.adminOnly')}
-              </p>
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Members Tab */}
-        <TabsContent value="members" className="space-y-6">
-          {isAdmin ? (
-            <div className="bg-background rounded-lg border p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-foreground">
-                  {t('profile.membersSection.title')}
-                </h2>
-                <Button size="sm">{t('profile.membersSection.invite')}</Button>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 rounded-lg border">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium">
-                      {user?.fullName?.charAt(0)}
+                return (
+                  <div
+                    key={member.id}
+                    className="border rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground truncate">
+                        {member.full_name || 'Sin nombre'}
+                      </p>
+                      <p className="text-sm text-muted-foreground truncate">
+                        {member.email}
+                      </p>
+                      <div className="flex flex-wrap gap-2 mt-2 text-xs">
+                        <span className="px-2 py-1 rounded-full bg-muted text-muted-foreground">
+                          {member.role}
+                        </span>
+                        <span className="px-2 py-1 rounded-full bg-muted text-muted-foreground">
+                          {member.team_access ? 'Acceso a Team' : 'Sin acceso a Team'}
+                        </span>
+                        {!member.is_active && (
+                          <span className="px-2 py-1 rounded-full bg-red-50 text-red-600">
+                            Inactivo
+                          </span>
+                        )}
+                        {isCurrentUser && (
+                          <span className="px-2 py-1 rounded-full bg-blue-50 text-blue-600">
+                            Tú
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium text-foreground">{user?.fullName}</p>
-                      <p className="text-sm text-muted-foreground">{user?.email}</p>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant={member.team_access ? 'outline' : 'default'}
+                        disabled={isBusy || isCurrentUser}
+                        onClick={() => handleToggleMemberAccess(member)}
+                      >
+                        {member.team_access ? 'Quitar acceso' : 'Dar acceso'}
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        disabled={isBusy || isCurrentUser}
+                        onClick={() => handleRemoveMember(member)}
+                        className="gap-2"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Eliminar
+                      </Button>
                     </div>
                   </div>
-                  <span className="text-xs bg-secondary/10 text-secondary px-2 py-1 rounded">
-                    {t('profile.roles.admin')}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-background rounded-lg border p-6">
-              <p className="text-muted-foreground">
-                {t('profile.membersSection.adminOnly')}
-              </p>
+                );
+              })}
             </div>
           )}
-        </TabsContent>
-      </Tabs>
+        </SectionCard>
+      )}
     </div>
   );
 }

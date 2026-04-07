@@ -1,39 +1,74 @@
 from sqlalchemy.orm import Session
 from app.repositories.user_repository import (
     get_user_by_email,
-    create_tenant_and_user
+    get_tenant_by_company_name,
+    tenant_has_admin,
+    create_tenant_and_user,
+    create_analyst_user,
 )
 from app.core.security import hash_password, verify_password, create_access_token
-from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, ChangePasswordRequest
+from app.schemas.auth_schema import RegisterRequest, LoginRequest, TokenResponse, ChangePasswordRequest
 from app.models.user import User
 
 
 def register_user(db: Session, data: RegisterRequest) -> User:
-    existing = get_user_by_email(db, data.email)
-    if existing:
+    """
+    Flujo de registro con roles:
+
+    Admin:
+      - Si ya existe un admin para ese nombre de empresa → error.
+      - Si no existe la empresa → crea tenant + usuario admin.
+
+    Analyst:
+      - Si la empresa no existe → error (debe existir primero el admin).
+      - Si existe → se une al tenant como analista (team_access=False hasta aprobación).
+    """
+    if get_user_by_email(db, data.email):
         raise ValueError("Ya existe una cuenta con ese email")
 
-    hashed = hash_password(data.password)
+    role = (data.role or "admin").lower()
 
-    return create_tenant_and_user(
-        db=db,
-        company_name=data.company_name,
-        sector=data.sector,
-        currency=data.currency,
-        email=data.email,
-        hashed_password=hashed,
-        full_name=data.full_name
-    )
+    if role == "admin":
+        existing_tenant = get_tenant_by_company_name(db, data.company_name)
+        if existing_tenant and tenant_has_admin(db, existing_tenant.id):
+            raise ValueError(
+                "Ya existe un administrador para esta empresa. "
+                "Si formas parte de este equipo, regístrate como Analista."
+            )
+        # Crear nuevo tenant + admin
+        return create_tenant_and_user(
+            db=db,
+            company_name=data.company_name,
+            sector=data.sector,
+            currency=data.currency,
+            email=data.email,
+            hashed_password=hash_password(data.password),
+            full_name=data.full_name,
+        )
+
+    elif role == "analyst":
+        tenant = get_tenant_by_company_name(db, data.company_name)
+        if not tenant:
+            raise ValueError(
+                "No existe ninguna empresa con ese nombre. "
+                "Verifica el nombre exacto con tu administrador."
+            )
+        return create_analyst_user(
+            db=db,
+            tenant_id=tenant.id,
+            email=data.email,
+            hashed_password=hash_password(data.password),
+            full_name=data.full_name,
+        )
+
+    else:
+        raise ValueError("Rol inválido. Usa 'admin' o 'analyst'.")
 
 
 def login_user(db: Session, data: LoginRequest) -> TokenResponse | None:
     user = get_user_by_email(db, data.email)
-    if not user:
+    if not user or not verify_password(data.password, user.hashed_password):
         return None
-
-    if not verify_password(data.password, user.hashed_password):
-        return None
-
     if not user.is_active:
         return None
 
@@ -41,7 +76,6 @@ def login_user(db: Session, data: LoginRequest) -> TokenResponse | None:
         "sub": str(user.id),
         "tenant_id": str(user.tenant_id)
     })
-
     return TokenResponse(access_token=token)
 
 
