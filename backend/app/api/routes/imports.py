@@ -173,17 +173,33 @@ async def create_import(
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail=f"El fichero supera el límite de {MAX_FILE_SIZE // (1024*1024)} MB")
 
-    result = run_import(db=db, tenant_id=str(current_user.tenant_id), filename=file.filename, file_content=content)
+    result = run_import(
+        db=db,
+        tenant_id=str(current_user.tenant_id),
+        user_id=str(current_user.id),
+        filename=file.filename,
+        file_content=content
+    ) 
     return ImportResponse(**result)
 
 
 @router.get("/available-range")
 def get_available_range(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = db.execute(text("""
-        SELECT MIN(order_date) AS date_from, MAX(order_date) AS date_to, COUNT(*) AS total_orders,
-               COUNT(DISTINCT DATE_TRUNC('month', order_date)) AS months_with_data
-        FROM orders WHERE tenant_id = :tenant_id
-    """), {"tenant_id": str(current_user.tenant_id)})
+        SELECT
+            MIN(o.order_date) AS date_from,
+            MAX(o.order_date) AS date_to,
+            COUNT(*) AS total_orders,
+            COUNT(DISTINCT DATE_TRUNC('month', o.order_date)) AS months_with_data
+        FROM orders o
+        JOIN imports i ON i.id = o.import_id
+        WHERE o.tenant_id = :tenant_id
+        AND i.tenant_id = :tenant_id
+        AND i.user_id = :user_id
+    """), {
+        "tenant_id": str(current_user.tenant_id),
+        "user_id": str(current_user.id),
+    })
     row = result.fetchone()
     if not row or not row[0]:
         return {"has_data": False, "date_from": None, "date_to": None, "total_orders": 0, "months_with_data": 0}
@@ -193,26 +209,48 @@ def get_available_range(db: Session = Depends(get_db), current_user: User = Depe
 @router.get("/")
 def list_imports(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = db.execute(text("""
-        WITH orders_agg AS (
-            SELECT import_id, MIN(order_date) AS data_date_from, MAX(order_date) AS data_date_to, COUNT(*) AS orders_loaded
-            FROM orders WHERE tenant_id = :tenant_id GROUP BY import_id
+        WITH user_imports AS (
+            SELECT id, filename, file_format, status, detected_type,
+                total_rows, valid_rows, invalid_rows, file_size_bytes,
+                created_at, completed_at
+            FROM imports
+            WHERE tenant_id = :tenant_id
+            AND user_id = :user_id
+        ),
+        orders_agg AS (
+            SELECT o.import_id,
+                MIN(o.order_date) AS data_date_from,
+                MAX(o.order_date) AS data_date_to,
+                COUNT(*) AS orders_loaded
+            FROM orders o
+            JOIN imports i ON i.id = o.import_id
+            WHERE o.tenant_id = :tenant_id
+            AND i.user_id = :user_id
+            GROUP BY o.import_id
         ),
         lines_agg AS (
-            SELECT import_id, COUNT(*) AS lines_loaded
-            FROM order_lines WHERE tenant_id = :tenant_id GROUP BY import_id
+            SELECT ol.import_id,
+                COUNT(*) AS lines_loaded
+            FROM order_lines ol
+            JOIN imports i ON i.id = ol.import_id
+            WHERE ol.tenant_id = :tenant_id
+            AND i.user_id = :user_id
+            GROUP BY ol.import_id
         )
-        SELECT i.id::text, i.filename, i.file_format, i.status, i.detected_type,
-               i.total_rows, i.valid_rows, i.invalid_rows, i.file_size_bytes, i.created_at, i.completed_at,
-               oa.data_date_from, oa.data_date_to,
-               COALESCE(oa.orders_loaded, 0) AS orders_loaded,
-               COALESCE(la.lines_loaded, 0) AS lines_loaded
-        FROM imports i
-        LEFT JOIN orders_agg oa ON oa.import_id = i.id
-        LEFT JOIN lines_agg la ON la.import_id = i.id
-        WHERE i.tenant_id = :tenant_id
-        ORDER BY i.created_at DESC
-    """), {"tenant_id": str(current_user.tenant_id)})
-
+        SELECT ui.id::text, ui.filename, ui.file_format, ui.status, ui.detected_type,
+            ui.total_rows, ui.valid_rows, ui.invalid_rows, ui.file_size_bytes,
+            ui.created_at, ui.completed_at,
+            oa.data_date_from, oa.data_date_to,
+            COALESCE(oa.orders_loaded, 0) AS orders_loaded,
+            COALESCE(la.lines_loaded, 0) AS lines_loaded
+        FROM user_imports ui
+        LEFT JOIN orders_agg oa ON oa.import_id = ui.id
+        LEFT JOIN lines_agg la ON la.import_id = ui.id
+        ORDER BY ui.created_at DESC
+    """), {
+        "tenant_id": str(current_user.tenant_id),
+        "user_id": str(current_user.id),
+    })
     items = []
     for row in result.mappings().all():
         item = {k: _serialize_value(v) for k, v in row.items()}
@@ -234,7 +272,7 @@ def list_imports(db: Session = Depends(get_db), current_user: User = Depends(get
 
 @router.get("/{import_id}")
 def get_import(import_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id).first()
+    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id, user_id=current_user.id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Import no encontrado")
     return record
@@ -242,7 +280,7 @@ def get_import(import_id: str, db: Session = Depends(get_db), current_user: User
 
 @router.get("/{import_id}/diagnosis")
 def get_import_diagnosis(import_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id).first()
+    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id, user_id=current_user.id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Import no encontrado")
     return _build_import_diagnosis_payload(db, str(current_user.tenant_id), record)
@@ -250,7 +288,7 @@ def get_import_diagnosis(import_id: str, db: Session = Depends(get_db), current_
 
 @router.get("/{import_id}/mapping-suggestion", response_model=MappingSuggestionResponse)
 def get_mapping_suggestion(import_id: str, sheet_name: str | None = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id).first()
+    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id, user_id=current_user.id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Import no encontrado")
 
@@ -295,10 +333,19 @@ def get_mapping_suggestion(import_id: str, sheet_name: str | None = None, db: Se
 def apply_import_mapping(import_id: str, payload: MappingApplyRequest = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     mapping = {item.source_column: item.canonical_field for item in payload.assignments}
     try:
+        record = db.query(Import).filter_by(
+            id=import_id,
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id
+        ).first()
+        if not record:
+            raise HTTPException(status_code=404, detail="Import no encontrado")
+        
         result = reprocess_import_with_mapping(
             db=db,
             tenant_id=str(current_user.tenant_id),
             import_id=import_id,
+            user_id=str(current_user.id),
             sheet_name=payload.sheet_name,
             upload_type=payload.upload_type,
             mapping=mapping,
@@ -322,11 +369,14 @@ def apply_import_mapping(import_id: str, payload: MappingApplyRequest = Body(...
 def get_import_impact(import_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from app.models.dashboard import Dashboard
 
-    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id).first()
+    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id, user_id=current_user.id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Import no encontrado")
 
-    dashboards = db.query(Dashboard).filter_by(tenant_id=current_user.tenant_id).all()
+    dashboards = db.query(Dashboard).filter_by(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id
+    ).all()
     affected = []
     for d in dashboards:
         ids = d.import_ids or []
@@ -347,12 +397,15 @@ def get_import_impact(import_id: str, db: Session = Depends(get_db), current_use
 def delete_import(import_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from app.models.dashboard import Dashboard
 
-    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id).first()
+    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id, user_id=current_user.id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Import no encontrado")
 
     tid = str(current_user.tenant_id)
-    dashboards = db.query(Dashboard).filter_by(tenant_id=current_user.tenant_id).all()
+    dashboards = db.query(Dashboard).filter_by(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id
+    ).all()
     dashboards_to_delete = []
 
     for d in dashboards:
@@ -363,13 +416,13 @@ def delete_import(import_id: str, db: Session = Depends(get_db), current_user: U
         if len(remaining) == 0:
             dashboards_to_delete.append(str(d.id))
         else:
-            db.execute(text("""UPDATE dashboards SET import_ids = :ids::jsonb WHERE id = :did AND tenant_id = :tid"""), {
+            db.execute(text("""UPDATE dashboards SET import_ids = :ids::jsonb WHERE id = :did AND tenant_id = :tid AND user_id = :uid"""), {
                 "ids": str(remaining).replace("'", '"'), "did": str(d.id), "tid": tid
             })
 
     for did in dashboards_to_delete:
-        db.execute(text("""UPDATE reports SET dashboard_id = NULL WHERE dashboard_id = :did"""), {"did": did})
-        db.execute(text("DELETE FROM dashboards WHERE id = :did AND tenant_id = :tid"), {"did": did, "tid": tid})
+        db.execute(text("""UPDATE reports SET dashboard_id = NULL WHERE dashboard_id = :did AND tenant_id = :tid AND created_by = :uid"""), {"did": did})
+        db.execute(text("DELETE FROM dashboards WHERE id = :did AND tenant_id = :tid AND user_id = :uid"), {"did": did, "tid": tid})
 
     for table in ["order_lines", "orders", "customers", "products", "field_mappings", "raw_uploads", "import_sheets"]:
         db.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid AND import_id = :iid"), {"tid": tid, "iid": import_id})
@@ -382,7 +435,7 @@ def delete_import(import_id: str, db: Session = Depends(get_db), current_user: U
 
 @router.get("/{import_id}/preview")
 def preview_import(import_id: str, mode: str = "raw", db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id).first()
+    record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id, user_id=current_user.id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Import no encontrado")
 

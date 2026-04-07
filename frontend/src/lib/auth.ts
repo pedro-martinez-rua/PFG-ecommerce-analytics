@@ -36,7 +36,6 @@ class AuthService {
 
   async login(credentials: LoginCredentials): Promise<{ success: boolean; error?: string }> {
     try {
-      // Backend espera JSON con { email, password } — NO form-encoded
       const tokenRes = await fetch(`${API_BASE}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -65,17 +64,18 @@ class AuthService {
       const meData = await meRes.json();
 
       const user: User = {
-        id:        meData.id,
-        email:     meData.email,
-        fullName:  meData.full_name || meData.email,
-        role:      meData.role || 'admin',
-        tenantId:  meData.tenant_id,
-        createdAt: meData.created_at || new Date().toISOString(),
+        id:         meData.id,
+        email:      meData.email,
+        fullName:   meData.full_name || '',               // CAMBIO: sin fallback al email
+        role:       meData.role || 'admin',
+        tenantId:   meData.tenant_id,
+        createdAt:  meData.created_at || new Date().toISOString(),
+        teamAccess: meData.team_access ?? false,          // NUEVO
       };
 
       const tenant: Tenant = {
         id:        meData.tenant_id,
-        name:      meData.company_name || meData.email,
+        name:      meData.company_name || '',             // CAMBIO: sin fallback al email
         plan:      'professional',
         createdAt: new Date().toISOString(),
       };
@@ -105,6 +105,7 @@ class AuthService {
           password:     payload.password,
           full_name:    payload.fullName,
           company_name: payload.companyName,
+          role:         payload.role || 'admin',          // NUEVO
         }),
       });
 
@@ -113,7 +114,6 @@ class AuthService {
         return { success: false, error: err.detail || 'Error al registrarse' };
       }
 
-      // Registro exitoso → hacer login automático
       return this.login({ email: payload.email, password: payload.password });
 
     } catch {
@@ -127,9 +127,10 @@ class AuthService {
   }
 
   async forgotPassword(_email: string): Promise<{ success: boolean; error?: string }> {
-    // El backend no tiene este endpoint aún — devolver success por UX
     return { success: true };
   }
+
+  // SIN CAMBIOS — se mantiene igual que tu versión
   async updateMe(payload: { full_name: string }): Promise<{ success: boolean; error?: string }> {
     try {
       const token = this.session?.token

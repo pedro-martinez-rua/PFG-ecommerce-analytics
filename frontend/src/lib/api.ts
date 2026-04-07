@@ -328,3 +328,43 @@ export async function getImportImpact(importId: string): Promise<{
 }> {
   return apiFetch(`/api/imports/${importId}/impact`);
 }
+// ─── Team ──────────────────────────────────────────────────────────────
+
+export interface InviteMemberPayload {
+  email: string;
+  full_name?: string;
+  password: string;
+  role: 'admin' | 'analyst';
+}
+
+import type { TeamMember, TeamReport } from './types';
+
+export function getTeamMembers(): Promise<TeamMember[]> {
+  return apiFetch('/api/team/members');
+}
+
+export function removeMember(memberId: string): Promise<void> {
+  return apiFetch(`/api/team/members/${memberId}`, { method: 'DELETE' });
+}
+
+export function getTeamReports(): Promise<TeamReport[]> {
+  return apiFetch('/api/team/reports');
+}
+
+export function shareReport(reportId: string, shared: boolean): Promise<SavedReport> {
+  return apiFetch(`/api/reports/${reportId}/share`, {
+    method: 'PATCH',
+    body: JSON.stringify({ shared }),
+  });
+}
+
+export function toggleTeamAccess(memberId: string, teamAccess: boolean): Promise<TeamMember> {
+  return apiFetch(`/api/team/members/${memberId}/access`, {
+    method: 'PATCH',
+    body: JSON.stringify({ team_access: teamAccess }),
+  });
+}
+
+export function getTeamReport(id: string): Promise<TeamReport> {
+  return apiFetch(`/api/team/reports/${id}`);
+}

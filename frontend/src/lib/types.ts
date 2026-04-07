@@ -15,6 +15,7 @@ export interface User {
   role: UserRole;
   tenantId: string;
   createdAt: string;
+  teamAccess: boolean;
 }
 
 export interface Session {
@@ -108,6 +109,7 @@ export interface RegisterPayload {
   confirmPassword: string;
   companyName: string;
   acceptTerms: boolean;
+  role: 'admin' | 'analyst';
 }
 
 export interface ContactFormData {
@@ -259,6 +261,8 @@ export interface SavedReport {
   date_to: string | null;
   insights: string | null;
   kpi_snapshot: Record<string, any> | null;
+  charts_snapshot: Record<string, any> | null;
+  shared_with_team: boolean;
   created_at: string;
 }
 
@@ -357,4 +361,31 @@ export interface MappingApplyResponse {
   invalid_rows: number;
   skipped_rows: number;
   detected_type: string;
+}
+
+// ─── Team ────────────────────────────────────────────────────────────
+
+export interface TeamMember {
+  id: string;
+  email: string;
+  full_name: string;
+  role: 'admin' | 'analyst';
+  is_active: boolean;
+  team_access: boolean;
+  created_at: string;
+}
+
+export interface TeamReport {
+  id: string;
+  dashboard_id: string | null;
+  dashboard_name: string;
+  date_from: string | null;
+  date_to: string | null;
+  insights: string | null;
+  kpi_snapshot: Record<string, any> | null;
+  charts_snapshot: Record<string, any> | null;
+  shared_with_team: boolean;
+  created_at: string;
+  created_by_name: string | null;
+  created_by_email: string | null;
 }

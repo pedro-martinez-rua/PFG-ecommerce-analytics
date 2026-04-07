@@ -18,6 +18,7 @@ class Import(Base):
 
     id                   = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id            = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
+    user_id              = Column(UUID(as_uuid=True), ForeignKey("users.id"),   nullable=False,  index=True)
     filename             = Column(String, nullable=False)
     file_format          = Column(String, nullable=False, default="csv")  # csv | xlsx
     file_size_bytes      = Column(Integer, nullable=True)

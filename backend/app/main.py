@@ -7,7 +7,8 @@ from slowapi.errors import RateLimitExceeded
 from app.db.database import engine, Base
 from app.models import *
 from app.api.errors import http_exception_handler
-from app.api.routes import auth, imports, kpis, dashboards, reports  
+from app.api.routes import auth, imports, kpis, dashboards, reports, team
+# from app.api.routes.team import router as team_router
 
 
 Base.metadata.create_all(bind=engine)
@@ -39,8 +40,9 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(auth.router)
 app.include_router(imports.router)
 app.include_router(kpis.router)
-app.include_router(dashboards.router)  
-app.include_router(reports.router)     
+app.include_router(dashboards.router)
+app.include_router(reports.router)
+app.include_router(team.router)
 
 
 @app.get("/health")

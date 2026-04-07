@@ -31,7 +31,8 @@
       "contact": "Contact",
       "profile": "Profile & settings",
       "support": "Support",
-      "account": "Account"
+      "account": "Account",
+      "team": "Team"
     },
     "topbar": {
       "selectWorkspace": "Select workspace",
@@ -654,39 +655,120 @@
     "title": "Terms and Conditions of Use",
     "subtitle": "Legal terms governing the use of the CommerceIQ platform.",
     "sections": {
-      "1": { "title": "Identification", "content": "This document governs access to the SaaS platform CommerceIQ, owned by CommerceIQ, located in Madrid (Spain), contact email legal@commerceiq.ai." },
-      "2": { "title": "Purpose", "content": "CommerceIQ provides SaaS software for automated business data analysis, dashboards, metrics, insights and AI-assisted features." },
-      "3": { "title": "User status", "content": "Accessing the platform grants user status and implies full acceptance of these Terms." },
-      "4": { "title": "Registration and access", "content": "Users must provide accurate information and keep credentials confidential." },
-      "5": { "title": "Permitted use", "content": "Users must use the platform lawfully, in good faith and under these Terms." },
-      "6": { "title": "Intellectual property", "content": "All software and content rights belong to CommerceIQ." },
-      "7": { "title": "User data", "content": "Uploaded data is the sole responsibility of the user." },
-      "8": { "title": "Artificial intelligence", "content": "AI features are informative only and do not guarantee accuracy." },
-      "9": { "title": "Service availability", "content": "Service availability is not guaranteed uninterrupted." },
-      "10": { "title": "Disclaimer of warranties", "content": "The service is provided as-is, without warranties." },
-      "11": { "title": "Limitation of liability", "content": "CommerceIQ is not liable for indirect damages or business decisions." },
-      "12": { "title": "Termination", "content": "Access may be suspended in case of breach." },
-      "13": { "title": "Modifications", "content": "CommerceIQ may modify these Terms at any time." },
-      "14": { "title": "Governing law", "content": "These Terms are governed by Spanish and EU law." }
+      "1": {
+        "title": "Identification",
+        "content": "This document governs access to the SaaS platform CommerceIQ, owned by CommerceIQ, located in Madrid (Spain), contact email legal@commerceiq.ai."
+      },
+      "2": {
+        "title": "Purpose",
+        "content": "CommerceIQ provides SaaS software for automated business data analysis, dashboards, metrics, insights and AI-assisted features."
+      },
+      "3": {
+        "title": "User status",
+        "content": "Accessing the platform grants user status and implies full acceptance of these Terms."
+      },
+      "4": {
+        "title": "Registration and access",
+        "content": "Users must provide accurate information and keep credentials confidential."
+      },
+      "5": {
+        "title": "Permitted use",
+        "content": "Users must use the platform lawfully, in good faith and under these Terms."
+      },
+      "6": {
+        "title": "Intellectual property",
+        "content": "All software and content rights belong to CommerceIQ."
+      },
+      "7": {
+        "title": "User data",
+        "content": "Uploaded data is the sole responsibility of the user."
+      },
+      "8": {
+        "title": "Artificial intelligence",
+        "content": "AI features are informative only and do not guarantee accuracy."
+      },
+      "9": {
+        "title": "Service availability",
+        "content": "Service availability is not guaranteed uninterrupted."
+      },
+      "10": {
+        "title": "Disclaimer of warranties",
+        "content": "The service is provided as-is, without warranties."
+      },
+      "11": {
+        "title": "Limitation of liability",
+        "content": "CommerceIQ is not liable for indirect damages or business decisions."
+      },
+      "12": {
+        "title": "Termination",
+        "content": "Access may be suspended in case of breach."
+      },
+      "13": {
+        "title": "Modifications",
+        "content": "CommerceIQ may modify these Terms at any time."
+      },
+      "14": {
+        "title": "Governing law",
+        "content": "These Terms are governed by Spanish and EU law."
+      }
     }
   },
   "privacy": {
     "title": "Privacy Policy",
     "subtitle": "Information about personal data processing at CommerceIQ.",
     "sections": {
-      "1": { "title": "Data controller", "content": "The data controller is CommerceIQ, contact privacy@commerceiq.ai, Madrid, Spain." },
-      "2": { "title": "Scope", "content": "This Policy governs personal data processing on the CommerceIQ platform." },
-      "3": { "title": "Data types", "content": "Identification, business, analytical and technical data are processed." },
-      "4": { "title": "Purpose", "content": "Data is processed to provide the service and generate insights." },
-      "5": { "title": "Legal basis", "content": "Processing is based on contract performance, legal obligations and legitimate interest." },
-      "6": { "title": "Processor role", "content": "CommerceIQ acts as data processor for customer-uploaded data." },
-      "7": { "title": "Third-party services", "content": "Third-party cloud and AI providers may be used as subprocessors." },
-      "8": { "title": "Data retention", "content": "Data is retained while the contractual relationship exists." },
-      "9": { "title": "Recipients", "content": "No data is shared unless legally required." },
-      "10": { "title": "Security", "content": "Reasonable technical and organizational measures are applied." },
-      "11": { "title": "User rights", "content": "Users may exercise their rights via privacy@commerceiq.ai." },
-      "12": { "title": "Liability exclusion", "content": "CommerceIQ is not responsible for business decisions based on the software." },
-      "13": { "title": "Governing law", "content": "This Policy is governed by Spanish and EU law." }
+      "1": {
+        "title": "Data controller",
+        "content": "The data controller is CommerceIQ, contact privacy@commerceiq.ai, Madrid, Spain."
+      },
+      "2": {
+        "title": "Scope",
+        "content": "This Policy governs personal data processing on the CommerceIQ platform."
+      },
+      "3": {
+        "title": "Data types",
+        "content": "Identification, business, analytical and technical data are processed."
+      },
+      "4": {
+        "title": "Purpose",
+        "content": "Data is processed to provide the service and generate insights."
+      },
+      "5": {
+        "title": "Legal basis",
+        "content": "Processing is based on contract performance, legal obligations and legitimate interest."
+      },
+      "6": {
+        "title": "Processor role",
+        "content": "CommerceIQ acts as data processor for customer-uploaded data."
+      },
+      "7": {
+        "title": "Third-party services",
+        "content": "Third-party cloud and AI providers may be used as subprocessors."
+      },
+      "8": {
+        "title": "Data retention",
+        "content": "Data is retained while the contractual relationship exists."
+      },
+      "9": {
+        "title": "Recipients",
+        "content": "No data is shared unless legally required."
+      },
+      "10": {
+        "title": "Security",
+        "content": "Reasonable technical and organizational measures are applied."
+      },
+      "11": {
+        "title": "User rights",
+        "content": "Users may exercise their rights via privacy@commerceiq.ai."
+      },
+      "12": {
+        "title": "Liability exclusion",
+        "content": "CommerceIQ is not responsible for business decisions based on the software."
+      },
+      "13": {
+        "title": "Governing law",
+        "content": "This Policy is governed by Spanish and EU law."
+      }
     }
   }
 }

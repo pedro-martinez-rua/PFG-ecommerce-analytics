@@ -170,16 +170,18 @@ def load_all_orders(
     rows = result.fetchall()
     return pd.DataFrame(rows, columns=list(result.keys())) if rows else pd.DataFrame()
 
-def get_available_date_range(db: Session, tenant_id: str) -> dict:
+def get_available_date_range(db: Session, tenant_id: str, user_id: str) -> dict:
     """Rango de fechas disponible en los datos del tenant."""
     result = db.execute(text("""
         SELECT
-            MIN(order_date) AS date_from,
-            MAX(order_date) AS date_to,
-            COUNT(*)        AS total_orders
-        FROM orders
-        WHERE tenant_id = :tenant_id
-    """), {"tenant_id": tenant_id})
+            MIN(o.order_date) AS date_from,
+            MAX(o.order_date) AS date_to,
+            COUNT(*) AS total_orders
+        FROM orders o
+        JOIN imports i ON i.id = o.import_id
+        WHERE o.tenant_id = :tenant_id
+            AND i.user_id = :user_id
+    """), {"tenant_id": tenant_id, "user_id": user_id,})
     row = result.fetchone()
     if not row or not row[0]:
         return {"has_data": False, "date_from": None, "date_to": None, "total_orders": 0}
@@ -278,10 +280,6 @@ def _resolve_adaptive_previous_period(
     """
     Si el periodo actual está incompleto (ej. solo hay datos hasta abril),
     compara contra el mismo tramo del periodo anterior.
-    Ejemplo:
-      actual seleccionado: 2026-01-01 → 2026-12-31
-      datos reales hasta:  2026-04-30
-      previo adaptado:     2025-01-01 → 2025-04-30
     """
     if current_orders_df.empty:
         return None, None
@@ -349,7 +347,6 @@ def _calc_repeat_purchase_rate_historical(
         return None, "missing"
 
     if prior_history_df.empty or "customer_id" not in prior_history_df.columns:
-        # Sin histórico previo en dataset: no distinguimos con fiabilidad
         return None, "missing"
 
     prior_customers = set(prior_history_df["customer_id"].dropna().unique())
@@ -392,6 +389,20 @@ def _calc_avg_customer_ltv_until_date(
     return round(float(total_revenue) / float(unique_customers), 2)
 
 
+# NUEVO: aislamiento por usuario
+def get_user_import_ids(db: Session, tenant_id: str, user_id: str) -> list[str]:
+    """
+    Devuelve los import_ids que pertenecen al usuario.
+    Si no tiene ninguno, devuelve lista vacía (el usuario no ve datos de otros).
+    """
+    result = db.execute(text("""
+        SELECT id::text FROM imports
+        WHERE tenant_id = :tenant_id AND user_id = :user_id
+    """), {"tenant_id": tenant_id, "user_id": user_id})
+    return [row[0] for row in result.fetchall()]
+
+
+
 # CÁLCULO PRINCIPAL
 def compute_kpis(
     db: Session,
@@ -400,15 +411,21 @@ def compute_kpis(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     import_ids: Optional[List[str]] = None,
+    user_id: Optional[str] = None,   # NUEVO: aislamiento por usuario
 ) -> dict:
     """
     Calcula todos los KPIs disponibles para el tenant y periodo.
-    Analiza el pool completo de datos del tenant.
+    Si se pasa user_id y no import_ids explícitos, limita los datos
+    a los imports subidos por ese usuario.
     """
     # Periodo
     p_start, p_end, p_label = resolve_period(period, date_from, date_to)
     delta_days  = (p_end - p_start).days
     granularity = "month" if delta_days > 90 else "day"
+
+    # NUEVO: si no vienen import_ids explícitos, usar solo los del usuario
+    if not import_ids and user_id:
+        import_ids = get_user_import_ids(db, tenant_id, user_id) or None
 
     # Datos del periodo actual
     orders_df = load_orders(db, tenant_id, p_start, p_end, import_ids=import_ids)
@@ -492,17 +509,17 @@ def compute_kpis(
     kpis = {
         # Ventas
         "total_revenue":   _make_kpi(revenue, prev_revenue),
-        "order_count": _make_kpi(float(orders) if orders is not None else None,
-                                float(prev_orders) if prev_orders is not None else None
-                                ),
+        "order_count":     _make_kpi(float(orders) if orders else None,
+                                     float(prev_orders) if prev_orders else None),
         "avg_order_value": _make_kpi(aov, prev_aov),
         "net_revenue":     _make_kpi(net_revenue, prev_net,
                                      availability=nr_avail,
                                      reason="Calculado con datos parciales"
                                             if nr_avail == "estimated" else None),
-        "total_discounts": _make_kpi(discounts) if discounts is not None else _missing_kpi("Sin datos de descuentos"),
+        "total_discounts": _make_kpi(discounts)
+                           if discounts else _missing_kpi("Sin datos de descuentos"),
         "discount_rate":   _make_kpi(disc_rate)
-                           if disc_rate is not None else _missing_kpi("Sin datos de descuentos"),
+                           if disc_rate else _missing_kpi("Sin datos de descuentos"),
 
         # Rentabilidad
         "gross_margin": _make_kpi(
@@ -516,7 +533,7 @@ def compute_kpis(
                    "COGS parcialmente disponible" if gmp_avail == "estimated" else None
         ),
         "total_refunds": _make_kpi(total_refunds)
-                         if total_refunds is not None else _missing_kpi("Sin datos de reembolsos"),
+                         if total_refunds else _missing_kpi("Sin datos de reembolsos"),
         "refund_rate":   _make_kpi(refund_rate, prev_refund_rate)
                          if refund_rate is not None else _missing_kpi("Sin datos de reembolsos"),
 
@@ -553,9 +570,9 @@ def compute_kpis(
                            if returned_count is not None
                            else _missing_kpi("Sin datos de devoluciones"),
         "avg_delivery_days": _make_kpi(avg_delivery)
-                             if avg_delivery is not None else _missing_kpi("Sin datos de entrega"),
+                             if avg_delivery else _missing_kpi("Sin datos de entrega"),
         "delayed_orders_pct": _make_kpi(delayed_pct)
-                              if delayed_pct is not None else _missing_kpi("Sin datos de entrega"),
+                              if delayed_pct else _missing_kpi("Sin datos de entrega"),
     }
 
     # ── Charts ──

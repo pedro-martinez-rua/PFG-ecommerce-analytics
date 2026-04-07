@@ -10,6 +10,7 @@ import { Footer } from './Footer';
 import {
   BarChart3,
   LayoutDashboard,
+  Users2,
   Upload,
   FolderKanban,
   FileText,
@@ -56,6 +57,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { type: 'link', href: '/app/upload',     labelKey: 'app.sidebar.upload',     icon: Upload },
     { type: 'link', href: '/app/dashboards', labelKey: 'app.sidebar.dashboards', icon: FolderKanban },
     { type: 'link', href: '/app/reports',    labelKey: 'app.sidebar.reports',    icon: FileText },
+    { type: 'link', href: '/app/team',       labelKey: 'app.sidebar.team',       icon: Users2 },
     { type: 'link', href: '/app/imports',    labelKey: 'app.sidebar.imports',    icon: Database },
     // Soporte
     { type: 'divider', label: t('app.sidebar.support', 'Soporte') },

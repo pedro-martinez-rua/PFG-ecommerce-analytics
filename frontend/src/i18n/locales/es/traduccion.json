@@ -31,7 +31,8 @@
       "contact": "Contacto",
       "profile": "Perfil y ajustes",
       "support": "Soporte",
-      "account": "Cuenta"
+      "account": "Cuenta",
+      "team": "Equipo"
     },
     "topbar": {
       "selectWorkspace": "Seleccionar espacio",
@@ -654,39 +655,120 @@
     "title": "Términos y Condiciones de Uso",
     "subtitle": "Condiciones legales que regulan el uso de la plataforma CommerceIQ.",
     "sections": {
-      "1": { "title": "Identificación", "content": "Este documento regula el acceso y uso de la plataforma SaaS CommerceIQ, titularidad de CommerceIQ, con domicilio en Madrid (España) y correo de contacto legal@commerceiq.ai." },
-      "2": { "title": "Objeto", "content": "CommerceIQ ofrece un software SaaS para el análisis automatizado de datos empresariales, generación de dashboards, métricas e insights, incluyendo funcionalidades de inteligencia artificial." },
-      "3": { "title": "Condición de usuario", "content": "El acceso a la plataforma atribuye la condición de usuario e implica la aceptación íntegra de estos Términos." },
-      "4": { "title": "Registro y acceso", "content": "El usuario se compromete a facilitar información veraz y a mantener la confidencialidad de sus credenciales." },
-      "5": { "title": "Uso permitido", "content": "El usuario deberá utilizar la plataforma conforme a la ley, la buena fe y el presente contrato." },
-      "6": { "title": "Propiedad intelectual", "content": "Todos los derechos sobre el software y contenidos pertenecen a CommerceIQ." },
-      "7": { "title": "Datos del usuario", "content": "Los datos introducidos son responsabilidad exclusiva del usuario." },
-      "8": { "title": "Inteligencia artificial", "content": "Las funcionalidades de IA tienen carácter orientativo y no garantizan exactitud." },
-      "9": { "title": "Disponibilidad del servicio", "content": "CommerceIQ no garantiza la disponibilidad ininterrumpida del servicio." },
-      "10": { "title": "Exclusión de garantías", "content": "El servicio se presta tal cual, sin garantías explícitas o implícitas." },
-      "11": { "title": "Limitación de responsabilidad", "content": "CommerceIQ no será responsable de daños indirectos ni decisiones empresariales." },
-      "12": { "title": "Resolución", "content": "CommerceIQ podrá suspender el acceso en caso de incumplimiento." },
-      "13": { "title": "Modificaciones", "content": "CommerceIQ podrá modificar estos Términos en cualquier momento." },
-      "14": { "title": "Legislación aplicable", "content": "Estos Términos se rigen por la legislación española y europea." }
+      "1": {
+        "title": "Identificación",
+        "content": "Este documento regula el acceso y uso de la plataforma SaaS CommerceIQ, titularidad de CommerceIQ, con domicilio en Madrid (España) y correo de contacto legal@commerceiq.ai."
+      },
+      "2": {
+        "title": "Objeto",
+        "content": "CommerceIQ ofrece un software SaaS para el análisis automatizado de datos empresariales, generación de dashboards, métricas e insights, incluyendo funcionalidades de inteligencia artificial."
+      },
+      "3": {
+        "title": "Condición de usuario",
+        "content": "El acceso a la plataforma atribuye la condición de usuario e implica la aceptación íntegra de estos Términos."
+      },
+      "4": {
+        "title": "Registro y acceso",
+        "content": "El usuario se compromete a facilitar información veraz y a mantener la confidencialidad de sus credenciales."
+      },
+      "5": {
+        "title": "Uso permitido",
+        "content": "El usuario deberá utilizar la plataforma conforme a la ley, la buena fe y el presente contrato."
+      },
+      "6": {
+        "title": "Propiedad intelectual",
+        "content": "Todos los derechos sobre el software y contenidos pertenecen a CommerceIQ."
+      },
+      "7": {
+        "title": "Datos del usuario",
+        "content": "Los datos introducidos son responsabilidad exclusiva del usuario."
+      },
+      "8": {
+        "title": "Inteligencia artificial",
+        "content": "Las funcionalidades de IA tienen carácter orientativo y no garantizan exactitud."
+      },
+      "9": {
+        "title": "Disponibilidad del servicio",
+        "content": "CommerceIQ no garantiza la disponibilidad ininterrumpida del servicio."
+      },
+      "10": {
+        "title": "Exclusión de garantías",
+        "content": "El servicio se presta tal cual, sin garantías explícitas o implícitas."
+      },
+      "11": {
+        "title": "Limitación de responsabilidad",
+        "content": "CommerceIQ no será responsable de daños indirectos ni decisiones empresariales."
+      },
+      "12": {
+        "title": "Resolución",
+        "content": "CommerceIQ podrá suspender el acceso en caso de incumplimiento."
+      },
+      "13": {
+        "title": "Modificaciones",
+        "content": "CommerceIQ podrá modificar estos Términos en cualquier momento."
+      },
+      "14": {
+        "title": "Legislación aplicable",
+        "content": "Estos Términos se rigen por la legislación española y europea."
+      }
     }
   },
   "privacy": {
     "title": "Política de Privacidad",
     "subtitle": "Información sobre el tratamiento de datos personales en CommerceIQ.",
     "sections": {
-      "1": { "title": "Responsable del tratamiento", "content": "El responsable del tratamiento es CommerceIQ, con correo privacy@commerceiq.ai y domicilio en Madrid." },
-      "2": { "title": "Ámbito de aplicación", "content": "Esta Política regula el tratamiento de datos a través de la plataforma CommerceIQ." },
-      "3": { "title": "Tipos de datos tratados", "content": "Se tratan datos identificativos, empresariales, analíticos y técnicos." },
-      "4": { "title": "Finalidad del tratamiento", "content": "Los datos se utilizan para la prestación del servicio, análisis e insights." },
-      "5": { "title": "Base jurídica", "content": "La base legal es la ejecución contractual, obligaciones legales e interés legítimo." },
-      "6": { "title": "Encargado del tratamiento", "content": "CommerceIQ actúa como encargado respecto a los datos de clientes." },
-      "7": { "title": "Servicios de terceros", "content": "Se pueden usar proveedores cloud e IA como subencargados." },
-      "8": { "title": "Conservación", "content": "Los datos se conservan mientras exista relación contractual." },
-      "9": { "title": "Destinatarios", "content": "No se ceden datos salvo obligación legal." },
-      "10": { "title": "Seguridad", "content": "Se aplican medidas razonables de seguridad." },
-      "11": { "title": "Derechos", "content": "El usuario puede ejercer sus derechos escribiendo a privacy@commerceiq.ai." },
-      "12": { "title": "Exclusión de responsabilidad", "content": "CommerceIQ no responde por decisiones empresariales basadas en el software." },
-      "13": { "title": "Legislación aplicable", "content": "Esta Política se rige por la legislación española y europea." }
+      "1": {
+        "title": "Responsable del tratamiento",
+        "content": "El responsable del tratamiento es CommerceIQ, con correo privacy@commerceiq.ai y domicilio en Madrid."
+      },
+      "2": {
+        "title": "Ámbito de aplicación",
+        "content": "Esta Política regula el tratamiento de datos a través de la plataforma CommerceIQ."
+      },
+      "3": {
+        "title": "Tipos de datos tratados",
+        "content": "Se tratan datos identificativos, empresariales, analíticos y técnicos."
+      },
+      "4": {
+        "title": "Finalidad del tratamiento",
+        "content": "Los datos se utilizan para la prestación del servicio, análisis e insights."
+      },
+      "5": {
+        "title": "Base jurídica",
+        "content": "La base legal es la ejecución contractual, obligaciones legales e interés legítimo."
+      },
+      "6": {
+        "title": "Encargado del tratamiento",
+        "content": "CommerceIQ actúa como encargado respecto a los datos de clientes."
+      },
+      "7": {
+        "title": "Servicios de terceros",
+        "content": "Se pueden usar proveedores cloud e IA como subencargados."
+      },
+      "8": {
+        "title": "Conservación",
+        "content": "Los datos se conservan mientras exista relación contractual."
+      },
+      "9": {
+        "title": "Destinatarios",
+        "content": "No se ceden datos salvo obligación legal."
+      },
+      "10": {
+        "title": "Seguridad",
+        "content": "Se aplican medidas razonables de seguridad."
+      },
+      "11": {
+        "title": "Derechos",
+        "content": "El usuario puede ejercer sus derechos escribiendo a privacy@commerceiq.ai."
+      },
+      "12": {
+        "title": "Exclusión de responsabilidad",
+        "content": "CommerceIQ no responde por decisiones empresariales basadas en el software."
+      },
+      "13": {
+        "title": "Legislación aplicable",
+        "content": "Esta Política se rige por la legislación española y europea."
+      }
     }
   }
 }

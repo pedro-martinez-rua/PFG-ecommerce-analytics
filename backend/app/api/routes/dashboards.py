@@ -11,6 +11,7 @@ from app.models.user import User
 from app.models.dashboard import Dashboard
 from app.services.kpi_service import compute_kpis
 from app.services.groq_service import generate_insights
+from app.models.import_record import Import
 
 router = APIRouter(prefix="/api/dashboards", tags=["dashboards"])
 
@@ -28,8 +29,30 @@ def create_dashboard(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    requested_import_ids = [str(i) for i in (data.import_ids or [])]
+
+    if requested_import_ids:
+        owned_imports = (
+            db.query(Import)
+            .filter(
+                Import.tenant_id == current_user.tenant_id,
+                Import.user_id == current_user.id,
+                Import.id.in_(requested_import_ids)
+            )
+            .all()
+        )
+        owned_ids = {str(i.id) for i in owned_imports}
+
+        invalid_ids = [iid for iid in requested_import_ids if iid not in owned_ids]
+        if invalid_ids:
+            raise HTTPException(
+                status_code=403,
+                detail="Uno o varios imports no pertenecen al usuario actual"
+            )
+            
     dashboard = Dashboard(
         tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
         name=data.name,
         date_from=data.date_from,
         date_to=data.date_to,
@@ -48,7 +71,7 @@ def list_dashboards(
 ):
     dashboards = (
         db.query(Dashboard)
-        .filter_by(tenant_id=current_user.tenant_id)
+        .filter_by(tenant_id=current_user.tenant_id, user_id=current_user.id)
         .order_by(Dashboard.created_at.desc())
         .all()
     )
@@ -66,7 +89,8 @@ def get_dashboard(
 ):
     dashboard = db.query(Dashboard).filter_by(
         id=dashboard_id,
-        tenant_id=current_user.tenant_id
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id
     ).first()
     if not dashboard:
         raise HTTPException(status_code=404, detail="Dashboard no encontrado")
@@ -82,6 +106,7 @@ def get_dashboard(
         date_from=effective_from,
         date_to=effective_to,
         import_ids=[str(i) for i in (dashboard.import_ids or [])],
+        user_id=str(current_user.id),
     )
     return {**_serialize(dashboard), **kpi_data}
 
@@ -97,7 +122,8 @@ def get_dashboard_insights(
 ):
     dashboard = db.query(Dashboard).filter_by(
         id=dashboard_id,
-        tenant_id=current_user.tenant_id
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id
     ).first()
     if not dashboard:
         raise HTTPException(status_code=404, detail="Dashboard no encontrado")
@@ -112,6 +138,7 @@ def get_dashboard_insights(
         date_from=effective_from,
         date_to=effective_to,
         import_ids=[str(i) for i in (dashboard.import_ids or [])],
+        user_id=str(current_user.id),
     )
 
     insights = generate_insights(
@@ -140,19 +167,26 @@ def delete_dashboard(
 ):
     dashboard = db.query(Dashboard).filter_by(
         id=dashboard_id,
-        tenant_id=current_user.tenant_id
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id
     ).first()
     if not dashboard:
         raise HTTPException(status_code=404, detail="Dashboard no encontrado")
 
     db.execute(text("""
-        UPDATE reports SET dashboard_id = NULL
+        UPDATE reports
+        SET dashboard_id = NULL
         WHERE dashboard_id = :did
-    """), {"did": dashboard_id})
+            AND tenant_id = :tid
+            AND created_by = :uid
+    """), {"did": dashboard_id, "tid": str(current_user.tenant_id), "uid": str(current_user.id),})
 
     db.execute(text("""
-        DELETE FROM dashboards WHERE id = :id AND tenant_id = :tid
-    """), {"id": dashboard_id, "tid": str(current_user.tenant_id)})
+        DELETE FROM dashboards
+        WHERE id = :id
+            AND tenant_id = :tid
+            AND user_id = :uid
+    """), {"id": dashboard_id, "tid": str(current_user.tenant_id), "uid": str(current_user.id)})
 
     db.commit()
 

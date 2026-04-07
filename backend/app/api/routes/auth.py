@@ -4,8 +4,9 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 
+
 from app.db.database import get_db
-from app.schemas.auth import (
+from app.schemas.auth_schema import (
     RegisterRequest,
     LoginRequest,
     TokenResponse,
@@ -16,6 +17,7 @@ from app.schemas.auth import (
 from app.services.auth_service import register_user, login_user, change_password, update_me
 from app.core.dependencies import get_current_user
 from app.models.user import User
+from app.models.tenant import Tenant
 
 router  = APIRouter(prefix="/api/auth", tags=["auth"])
 limiter = Limiter(key_func=get_remote_address)
@@ -23,47 +25,33 @@ limiter = Limiter(key_func=get_remote_address)
 
 @router.post("/register", status_code=201)
 @limiter.limit("5/minute")
-def register(
-    request: Request,
-    data: RegisterRequest,
-    db: Session = Depends(get_db)
-):
+def register(request: Request, data: RegisterRequest, db: Session = Depends(get_db)):
     try:
         user = register_user(db, data)
         return {
-            "message": "Empresa registrada correctamente",
+            "message":   "Cuenta creada correctamente",
             "tenant_id": str(user.tenant_id),
             "user_id":   str(user.id),
             "email":     user.email,
+            "role":      user.role,
         }
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception:
         raise HTTPException(status_code=500, detail="Error interno al registrar")
-
-
+ 
+ 
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("10/minute")
-def login(
-    request: Request,
-    data: LoginRequest,
-    db: Session = Depends(get_db)
-):
+def login(request: Request, data: LoginRequest, db: Session = Depends(get_db)):
     token = login_user(db, data)
     if not token:
-        raise HTTPException(
-            status_code=401,
-            detail="Credenciales incorrectas"
-        )
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
     return token
-
-
+ 
+ 
 @router.get("/me", response_model=UserResponse)
-def me(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    from app.models.tenant import Tenant
+def me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     tenant = db.query(Tenant).filter_by(id=current_user.tenant_id).first()
     return {
         "id":           current_user.id,
@@ -72,9 +60,10 @@ def me(
         "full_name":    current_user.full_name,
         "is_active":    current_user.is_active,
         "role":         current_user.role,
-        "company_name": tenant.name if tenant else None
+        "team_access":  current_user.team_access,
+        "company_name": tenant.name if tenant else None,
     }
-
+ 
 
 @router.put("/me/password")
 @limiter.limit("5/minute")
