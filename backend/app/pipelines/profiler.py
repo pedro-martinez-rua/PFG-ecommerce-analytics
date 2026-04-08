@@ -32,7 +32,7 @@ def profile_dataframe(df: pd.DataFrame) -> dict:
             continue
 
         numeric_ratio = sample.apply(lambda x: x.replace(",", ".", 1).replace("-", "", 1).replace("%", "").replace("$", "").replace("€", "").replace("£", "").replace(" ", "").replace(".", "", 1).isdigit()).mean()
-        date_ratio = pd.to_datetime(sample, errors="coerce").notna().mean()
+        date_ratio = pd.to_datetime(sample, errors="coerce", format='mixed').notna().mean()
         if date_ratio >= 0.6:
             inferred_types[col] = "date"
         elif numeric_ratio >= 0.7:

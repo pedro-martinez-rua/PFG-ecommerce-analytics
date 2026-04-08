@@ -421,9 +421,9 @@ def delete_import(import_id: str, db: Session = Depends(get_db), current_user: U
             })
 
     for did in dashboards_to_delete:
-        db.execute(text("""UPDATE reports SET dashboard_id = NULL WHERE dashboard_id = :did AND tenant_id = :tid AND created_by = :uid"""), {"did": did})
-        db.execute(text("DELETE FROM dashboards WHERE id = :did AND tenant_id = :tid AND user_id = :uid"), {"did": did, "tid": tid})
-
+        db.execute(text("""UPDATE reports SET dashboard_id = NULL WHERE dashboard_id = :did AND tenant_id = :tid AND created_by = :uid"""), {
+            "did": did, "tid": tid, "uid": str(current_user.id)})
+        db.execute(text("DELETE FROM dashboards WHERE id = :did AND tenant_id = :tid AND user_id = :uid"), {"did": did, "tid": tid, "uid": str(current_user.id)})
     for table in ["order_lines", "orders", "customers", "products", "field_mappings", "raw_uploads", "import_sheets"]:
         db.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid AND import_id = :iid"), {"tid": tid, "iid": import_id})
 

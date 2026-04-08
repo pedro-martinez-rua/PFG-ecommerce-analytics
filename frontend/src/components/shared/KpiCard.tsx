@@ -20,9 +20,9 @@ export function KpiCard({ kpi, loading }: KpiCardProps) {
   const formatValue = (value: number, format: KPI['format']) => {
     switch (format) {
       case 'currency':
-        return new Intl.NumberFormat('en-US', {
+        return new Intl.NumberFormat('es-ES', {
           style: 'currency',
-          currency: 'USD',
+          currency: 'EUR',
           minimumFractionDigits: 0,
           maximumFractionDigits: 2,
         }).format(value);
