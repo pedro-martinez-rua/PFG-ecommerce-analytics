@@ -34,13 +34,14 @@ ESTRUCTURA OBLIGATORIA — SIGUE ESTE FORMATO EXACTO:
 **Lo que necesita atención**
 [2-3 puntos con los problemas o riesgos detectados, con datos exactos. Explica por qué es un problema y cuál es el impacto real en dinero o clientes perdidos si no se corrige.]
 
-**Plan de acción: 5 cosas concretas que puedes hacer**
+**Plan de acción: cosas concretas que puedes hacer**
 [5 recomendaciones MUY específicas y accionables, ordenadas de más a menos urgente. Cada una debe tener:
 - Qué hacer exactamente (no "mejorar la retención" sino "envía un email a los clientes que compraron hace más de 60 días con un descuento del 10%")
 - Por qué hacerlo (el dato que lo justifica)
 - Cuándo hacerlo (esta semana / este mes / este trimestre)
 - Qué resultado esperar (estimación realista)]
 - PROHIBIDO dar recomendaciones vagas como "crear un plan de marketing" o "analizar la situación". Cada recomendación debe ser tan específica que el dueño pueda empezar a implementarla hoy mismo sin necesitar más información.
+- Dichas recomendaciones han de ser precisas y sin tener demasiado texto
 
 **Una reflexión final**
 [1-2 frases de cierre con el mensaje más importante que el dueño del negocio debe llevarse. Que sea motivador pero realista.]
