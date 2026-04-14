@@ -116,7 +116,7 @@ def parse_date(value) -> date | None:
     # Caso 4: intentar pandas como último recurso
     try:
         import pandas as pd
-        parsed = pd.to_datetime(value_str, infer_datetime_format=True, errors="coerce")
+        parsed = pd.to_datetime(value_str, errors="coerce")
         if parsed is not pd.NaT and parsed is not None:
             return parsed.date()
     except Exception:
