@@ -5,10 +5,9 @@ import { Button } from '@/components/ui/button';
 import { getTeamReports } from '@/lib/api';
 import { TeamReport } from '@/lib/types';
 import { EmptyState, PageLoading } from '@/components/shared';
-import { useAuth } from '@/hooks/useAuth';
 import {
   Users, FileText, Calendar, Sparkles,
-  ChevronRight, Clock, User2
+  ChevronRight, Clock, User2, Lock,
 } from 'lucide-react';
 
 const KPI_PILLS: Record<string, { label: string; format: 'currency' | 'number' | 'percentage' }> = {
@@ -44,7 +43,7 @@ function TeamReportCard({ report }: { report: TeamReport }) {
 
   return (
     <Link
-      href={`/app/team/reports/${report.id}`}
+      href={`/app/reports/${report.id}`}
       className="block bg-background border rounded-xl hover:shadow-card transition-shadow group"
     >
       <div className="p-5">
@@ -53,18 +52,15 @@ function TeamReportCard({ report }: { report: TeamReport }) {
             <div className="bg-primary/10 rounded-lg p-2 mt-0.5 shrink-0">
               <FileText className="h-4 w-4 text-primary" />
             </div>
-
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-foreground group-hover:text-secondary transition-colors truncate">
                 {report.dashboard_name}
               </p>
-
               <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground mt-1">
                 <span className="flex items-center gap-1">
                   <User2 className="h-3 w-3" />
                   {creatorLabel}
                 </span>
-
                 {report.date_from && report.date_to ? (
                   <span className="flex items-center gap-1">
                     <Calendar className="h-3 w-3" />
@@ -73,16 +69,12 @@ function TeamReportCard({ report }: { report: TeamReport }) {
                 ) : (
                   <span>Todos los datos</span>
                 )}
-
                 <span className="flex items-center gap-1">
                   <Clock className="h-3 w-3" />
                   {new Date(report.created_at).toLocaleDateString('es-ES', {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
+                    day: '2-digit', month: 'short', year: 'numeric',
                   })}
                 </span>
-
                 {report.insights && (
                   <span className="flex items-center gap-1 text-secondary">
                     <Sparkles className="h-3 w-3" />
@@ -92,7 +84,6 @@ function TeamReportCard({ report }: { report: TeamReport }) {
               </div>
             </div>
           </div>
-
           <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-secondary transition-colors shrink-0 mt-0.5" />
         </div>
 
@@ -111,40 +102,47 @@ function TeamReportCard({ report }: { report: TeamReport }) {
   );
 }
 
-export function TeamPage() {
-  const navigate = useNavigate();
-  const { session } = useAuth();
-  const isAdmin = session?.user.role === 'admin';
+// Estado sin acceso (403)
+function AccessDenied() {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <div className="bg-muted rounded-full p-5 mb-5">
+        <Lock className="h-8 w-8 text-muted-foreground" />
+      </div>
+      <h2 className="text-xl font-semibold text-foreground mb-2">
+        Acceso restringido
+      </h2>
+      <p className="text-muted-foreground max-w-sm text-sm leading-relaxed">
+        Tu administrador aún no te ha dado acceso a la pantalla de Equipo.
+        Contacta con él para que lo active desde{' '}
+        <span className="font-medium text-foreground">Perfil → Miembros</span>.
+      </p>
+    </div>
+  );
+}
 
-  const [reports, setReports] = useState<TeamReport[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+// TeamPage
+
+export function TeamPage() {
+  const navigate  = useNavigate();
+  const [reports, setReports]       = useState<TeamReport[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-
     getTeamReports()
       .then(setReports)
-      .catch((err) => {
-        setReports([]);
-        setError(err instanceof Error ? err.message : 'Error al cargar informes del equipo');
+      .catch((err: Error) => {
+        if (err.message.includes('403') || err.message.toLowerCase().includes('acceso')) {
+          setAccessDenied(true);
+        }
       })
       .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <PageLoading message="Cargando informes del equipo..." />;
 
-  if (error) {
-    return (
-      <div className="text-center py-20">
-        <p className="text-muted-foreground">{error}</p>
-        <Button variant="ghost" className="mt-4" onClick={() => navigate('/app')}>
-          Volver al resumen
-        </Button>
-      </div>
-    );
-  }
+  if (accessDenied) return <AccessDenied />;
 
   return (
     <div className="space-y-6">
@@ -158,17 +156,14 @@ export function TeamPage() {
             Informes compartidos por los miembros de tu equipo.
           </p>
         </div>
-
-        {isAdmin && (
-          <Button
-            variant="outline"
-            className="gap-2"
-            onClick={() => navigate('/app/profile?tab=members')}
-          >
-            <Users className="h-4 w-4" />
-            Gestionar equipo
-          </Button>
-        )}
+        <Button
+          variant="outline"
+          className="gap-2"
+          onClick={() => navigate('/app/profile?tab=members')}
+        >
+          <Users className="h-4 w-4" />
+          Gestionar equipo
+        </Button>
       </div>
 
       {reports.length === 0 ? (
