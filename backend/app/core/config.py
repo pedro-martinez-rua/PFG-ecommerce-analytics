@@ -1,8 +1,10 @@
 from pydantic_settings import BaseSettings
-from pydantic import validator
+from pydantic import field_validator, ConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = ConfigDict(env_file=".env")
+
     DATABASE_URL: str
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
@@ -10,8 +12,9 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
-    @validator("SECRET_KEY")
-    def secret_key_must_be_strong(cls, v):
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def secret_key_must_be_strong(cls, v: str) -> str:
         weak_defaults = {
             "cambia_esto_por_una_clave_segura_larga_aleatoria",
             "secret",
@@ -30,9 +33,6 @@ class Settings(BaseSettings):
                 "Genera una con: openssl rand -hex 32"
             )
         return v
-
-    class Config:
-        env_file = ".env"
 
 
 settings = Settings()
