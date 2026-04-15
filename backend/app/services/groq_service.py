@@ -67,7 +67,7 @@ CÓMO INTERPRETAR LOS DATOS QUE RECIBES
 - El ratio pedidos/clientes únicos te dice cuánto repite de media un cliente — úsalo
 
 EXTENSIÓN: Usa las palabras que necesites. Ni más ni menos. Lo que importa es que cada frase aporte valor real al dueño del negocio. Elimina cualquier relleno.
-CONCISIÓN: El análisis completo debe caber en 600-700 palabras máximo. Sé directo y elimina cualquier repetición. Si una idea ya se mencionó, no la repitas.
+CONCISIÓN: El análisis completo debe caber en 600-700 palabras. Sé directo y elimina cualquier repetición. Si una idea ya se mencionó, no la repitas.
 """
 
 
@@ -242,8 +242,6 @@ def _build_context(kpis: dict, coverage: dict, charts: dict, period: str) -> str
             lines.append(f"Revenue medio últimos 3 periodos: {last_3:,.0f}")
             lines.append(f"Variación de tendencia: {'↑' if trend > 0 else '↓'}{abs(trend):.0f}% "
                          f"({'crecimiento' if trend > 0 else 'caída'})")
-
-        # Mejor y peor mes
         best  = max(rev_time, key=lambda x: x["value"])
         worst = min(rev_time, key=lambda x: x["value"])
         lines.append(f"Mejor periodo: {best['label']} con {best['value']:,.2f}")
@@ -296,12 +294,9 @@ def generate_insights(
     kpis: dict,
     coverage: dict,
     period: str,
-    charts: dict = None
+    charts: dict = None,
+    system_prompt: str = None,
 ) -> str:
-    """
-    Genera un análisis detallado con recomendaciones accionables.
-    Nunca envía datos personales a Groq.
-    """
     if charts is None:
         charts = {}
 
@@ -309,13 +304,14 @@ def generate_insights(
         return _fallback_insights(kpis, coverage)
 
     context = _build_context(kpis, coverage, charts, period)
+    active_prompt = system_prompt if system_prompt else SYSTEM_PROMPT
 
     try:
         client = Groq(api_key=settings.GROQ_API_KEY)
         response = client.chat.completions.create(
             model=settings.GROQ_MODEL,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": active_prompt},
                 {"role": "user", "content": (
                     "Aquí tienes todas las métricas de mi negocio de e-commerce. "
                     "Analízalas en detalle, sé muy específico con los números, "
@@ -330,15 +326,12 @@ def generate_insights(
         response_text  = response.choices[0].message.content.strip()
         finish_reason  = response.choices[0].finish_reason
 
-        # Si Groq se quedó sin tokens, cerrar en el último punto completo
-        # para evitar frases cortadas a mitad
         if finish_reason == "length":
             last_period = max(
                 response_text.rfind("."),
                 response_text.rfind("!"),
                 response_text.rfind("?"),
             )
-            # Solo cortar si hay suficiente contenido antes del último punto
             if last_period > len(response_text) * 0.6:
                 response_text = response_text[:last_period + 1]
 

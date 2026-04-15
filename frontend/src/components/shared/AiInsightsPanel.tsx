@@ -43,9 +43,17 @@ export function AiInsightsPanel({ insights = [], rawText, loading, onClose }: Ai
       }
       // Ítems de lista
       if (line.startsWith('* ') || line.match(/^\d+\. /)) {
+        const content = line.replace(/^\* /, '').replace(/^\d+\. /, '');
+        const parts = content.split(/(\*\*[^*]+\*\*)/g);
         return (
           <p key={i} className="mb-2 border-l border-border pl-4 text-sm leading-relaxed text-muted-foreground">
-            {line.replace(/^\* /, '').replace(/^\d+\. /, '')}
+            {parts.map((part, j) =>
+              part.startsWith('**') ? (
+                <strong key={j} className="text-foreground font-medium">
+                  {part.replace(/\*\*/g, '')}
+                </strong>
+              ) : part
+            )}
           </p>
         );
       }

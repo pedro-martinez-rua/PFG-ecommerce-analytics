@@ -23,7 +23,7 @@ function mapKpis(response: BackendKpiResponse): KPI[] {
   return entries
     .map(({ key, name, format }) => {
       const d = (response.kpis as Record<string, any>)[key];
-      if (!d || d.availability === 'missing' || d.value === null) return null;
+      if (!d || d.availability === 'missing' || d.value === null || d.value === 0) return null;
       const change = d.growth_pct ?? 0;
       return {
         id: key, name, format, tenantId: '',
