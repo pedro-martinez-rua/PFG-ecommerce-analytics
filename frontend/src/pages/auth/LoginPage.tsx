@@ -94,12 +94,14 @@ export function LoginPage() {
         </div>
 
         <div className="space-y-2">
+          {/*
           <div className="flex items-center justify-between">
             <Label htmlFor="password">{t('login.form.password.label')}</Label>
             <Link href="/forgot-password" className="text-sm font-medium text-muted-foreground hover:text-foreground">
               {t('login.form.password.forgot')}
             </Link>
           </div>
+          */}
           <Input
             id="password"
             type="password"
