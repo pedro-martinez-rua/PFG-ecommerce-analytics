@@ -18,6 +18,12 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 4173,
     allowedHosts: ["commerceiq.up.railway.app"],
+    proxy: {
+      '/api': {
+        target: 'https://backend-production-dfe3.up.railway.app',
+        changeOrigin: true,
+      },
+    },
   },
   plugins: [react()],
   resolve: {
