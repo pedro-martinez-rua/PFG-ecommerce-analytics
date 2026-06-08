@@ -9,6 +9,7 @@ from app.models import *
 from app.api.errors import http_exception_handler
 from app.api.routes import auth, imports, kpis, dashboards, reports, team
 # from app.api.routes.team import router as team_router
+import os
 
 
 Base.metadata.create_all(bind=engine)
@@ -20,14 +21,20 @@ app = FastAPI(
     version="0.1.0",
 )
 
+origins = [
+    "http://localhost:5173",
+    "http://localhost:8080",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8080",
+]
+
+frontend_url = os.getenv("FRONTEND_URL")
+if frontend_url:
+    origins.append(frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:8080",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:8080",
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
