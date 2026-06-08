@@ -9,11 +9,15 @@ export default defineConfig({
     hmr: { overlay: false },
     proxy: {
       '/api': {
-        // En Docker usa el nombre del servicio, en local usa localhost
         target: process.env.BACKEND_URL || 'http://localhost:8000',
         changeOrigin: true,
       },
     },
+  },
+  preview: {
+    host: "0.0.0.0",
+    port: 4173,
+    allowedHosts: ["commerceiq.up.railway.app"],
   },
   plugins: [react()],
   resolve: {
