@@ -328,7 +328,7 @@ export async function getImportImpact(importId: string): Promise<{
 }> {
   return apiFetch(`/api/imports/${importId}/impact`);
 }
-// ─── Team ──────────────────────────────────────────────────────────────
+// Team
 
 export interface InviteMemberPayload {
   email: string;
