@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-
+import math
 from app.core.dependencies import get_current_user
 from app.db.database import get_db
 from app.models.import_record import Import
@@ -48,13 +48,21 @@ def _issue_from_validation_error(err: dict) -> dict:
     }
 
 
-def _load_sheet_raw_dataframe(db: Session, tenant_id: str, import_id: str, sheet_id) -> tuple[pd.DataFrame, dict]:
-    raw_rows = (
+def _load_sheet_raw_dataframe(
+    db: Session,
+    tenant_id: str,
+    import_id: str,
+    sheet_id,
+    limit: int | None = None,
+) -> tuple[pd.DataFrame, dict]:
+    query = (
         db.query(RawUpload)
         .filter_by(import_id=import_id, tenant_id=tenant_id, sheet_id=sheet_id)
         .order_by(RawUpload.row_index.asc())
-        .all()
     )
+    if limit is not None:
+        query = query.limit(limit)
+    raw_rows = query.all()
     data = [dict(r.raw_data or {}) for r in raw_rows]
     df = dataframe_from_raw_rows(data)
     profile = profile_dataframe(df)
@@ -71,8 +79,13 @@ def _build_import_diagnosis_payload(db: Session, tenant_id: str, record: Import)
     sheet_payloads = []
 
     for sheet in sheets:
-        _, profile = _load_sheet_raw_dataframe(db, tenant_id, record.id, sheet.id)
-        raw_rows = db.query(RawUpload).filter_by(import_id=record.id, tenant_id=tenant_id, sheet_id=sheet.id).all()
+        _, profile = _load_sheet_raw_dataframe(db, tenant_id, record.id, sheet.id, limit=1000)
+        raw_rows = (
+            db.query(RawUpload)
+            .filter_by(import_id=record.id, tenant_id=tenant_id, sheet_id=sheet.id)
+            .limit(5000)
+            .all()
+        )
         error_counter: Counter[str] = Counter()
         for raw in raw_rows:
             for err in raw.validation_errors or []:
@@ -153,7 +166,11 @@ def _build_import_diagnosis_payload(db: Session, tenant_id: str, record: Import)
         "suggestions": explanation.get("suggestions", []) or ["Revisa la preview raw y confirma manualmente las columnas si el sistema no acierta."],
         "sheets": sheet_payloads,
     }
-
+    
+def _sanitize_float(v):
+    if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+        return None
+    return v
 
 @router.post("/", response_model=ImportResponse, status_code=201)
 @limiter.limit("20/hour")
@@ -179,7 +196,7 @@ async def create_import(
         user_id=str(current_user.id),
         filename=file.filename,
         file_content=content
-    ) 
+    )
     return ImportResponse(**result)
 
 
@@ -299,10 +316,12 @@ def get_mapping_suggestion(import_id: str, sheet_name: str | None = None, db: Se
     if not sheet:
         raise HTTPException(status_code=404, detail="Hoja no encontrada")
 
-    raw_df, profile = _load_sheet_raw_dataframe(db, str(current_user.tenant_id), record.id, sheet.id)
+    raw_df, profile = _load_sheet_raw_dataframe(
+        db, str(current_user.tenant_id), record.id, sheet.id, limit=1000
+    )
     upload_type, confidence = detect_type_with_confidence(profile.get("columns", []), raw_df)
     suggestions = infer_mapping_with_confidence(profile.get("columns", []), raw_df)
-    required_fields = ["order_date"] if upload_type.value in ("orders", "mixed") else (["product_name"] if upload_type.value == "products" else [])
+    required_fields = ["order_date"] if upload_type.value in ("orders", "mixed") else []
     mapped_fields = {info.get("canonical") for info in suggestions.values() if info.get("canonical")}
     missing = [field for field in required_fields if field not in mapped_fields]
 
@@ -340,7 +359,7 @@ def apply_import_mapping(import_id: str, payload: MappingApplyRequest = Body(...
         ).first()
         if not record:
             raise HTTPException(status_code=404, detail="Import no encontrado")
-        
+
         result = reprocess_import_with_mapping(
             db=db,
             tenant_id=str(current_user.tenant_id),
@@ -393,8 +412,10 @@ def get_import_impact(import_id: str, db: Session = Depends(get_db), current_use
     return {"import_id": import_id, "filename": record.filename, "affected": affected, "has_impact": len(affected) > 0}
 
 
+
 @router.delete("/{import_id}", status_code=200)
 def delete_import(import_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    import json
     from app.models.dashboard import Dashboard
 
     record = db.query(Import).filter_by(id=import_id, tenant_id=current_user.tenant_id, user_id=current_user.id).first()
@@ -416,14 +437,48 @@ def delete_import(import_id: str, db: Session = Depends(get_db), current_user: U
         if len(remaining) == 0:
             dashboards_to_delete.append(str(d.id))
         else:
-            db.execute(text("""UPDATE dashboards SET import_ids = :ids::jsonb WHERE id = :did AND tenant_id = :tid AND user_id = :uid"""), {
-                "ids": str(remaining).replace("'", '"'), "did": str(d.id), "tid": tid
+            db.execute(text("UPDATE dashboards SET import_ids = CAST(:ids AS jsonb) WHERE id = :did AND tenant_id = :tid AND user_id = :uid"), {
+                "ids": json.dumps(remaining), "did": str(d.id), "tid": tid, "uid": str(current_user.id)
             })
 
     for did in dashboards_to_delete:
-        db.execute(text("""UPDATE reports SET dashboard_id = NULL WHERE dashboard_id = :did AND tenant_id = :tid AND created_by = :uid"""), {
+        db.execute(text("UPDATE reports SET dashboard_id = NULL WHERE dashboard_id = :did AND tenant_id = :tid AND created_by = :uid"), {
             "did": did, "tid": tid, "uid": str(current_user.id)})
-        db.execute(text("DELETE FROM dashboards WHERE id = :did AND tenant_id = :tid AND user_id = :uid"), {"did": did, "tid": tid, "uid": str(current_user.id)})
+        db.execute(text("DELETE FROM dashboards WHERE id = :did AND tenant_id = :tid AND user_id = :uid"), {
+            "did": did, "tid": tid, "uid": str(current_user.id)})
+
+    # Desconectar FKs cruzadas: order_lines de otros imports que apuntan
+    # a orders/products/customers de este import
+    db.execute(text("""
+        UPDATE order_lines
+        SET order_id = NULL
+        WHERE tenant_id = :tid
+          AND order_id IN (
+              SELECT id FROM orders
+              WHERE tenant_id = :tid AND import_id = :iid
+          )
+    """), {"tid": tid, "iid": import_id})
+
+    db.execute(text("""
+        UPDATE order_lines
+        SET product_id = NULL
+        WHERE tenant_id = :tid
+          AND product_id IN (
+              SELECT id FROM products
+              WHERE tenant_id = :tid AND import_id = :iid
+          )
+    """), {"tid": tid, "iid": import_id})
+
+    db.execute(text("""
+        UPDATE orders
+        SET customer_id = NULL
+        WHERE tenant_id = :tid
+          AND customer_id IN (
+              SELECT id FROM customers
+              WHERE tenant_id = :tid AND import_id = :iid
+          )
+    """), {"tid": tid, "iid": import_id})
+
     for table in ["order_lines", "orders", "customers", "products", "field_mappings", "raw_uploads", "import_sheets"]:
         db.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid AND import_id = :iid"), {"tid": tid, "iid": import_id})
 
@@ -431,7 +486,6 @@ def delete_import(import_id: str, db: Session = Depends(get_db), current_user: U
     db.execute(text("DELETE FROM imports WHERE id = :iid AND tenant_id = :tid"), {"iid": import_id, "tid": tid})
     db.commit()
     return {"message": "Import eliminado correctamente", "dashboards_deleted": dashboards_to_delete}
-
 
 @router.get("/{import_id}/preview")
 def preview_import(import_id: str, mode: str = "raw", db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -452,15 +506,16 @@ def preview_import(import_id: str, mode: str = "raw", db: Session = Depends(get_
             result = db.execute(text("""SELECT id::text AS id, external_id, email, full_name, country, created_at::text FROM customers WHERE tenant_id = :tenant_id AND import_id = :import_id LIMIT 10"""), {"tenant_id": tenant_id, "import_id": import_id})
         rows = result.fetchall()
         keys = list(result.keys())
-        return {"import_id": import_id, "mode": "normalized", "detected_type": detected, "row_count": len(rows), "columns": keys, "rows": [dict(zip(keys, row)) for row in rows]}
-
+        return {"import_id": import_id, "mode": "normalized", "detected_type": detected, "row_count": len(rows), "columns": keys, "rows": [{k: (None if isinstance(v, float) and (v != v or v == float('inf') or v == float('-inf')) else v) for k, v in dict(zip(keys, row)).items()} for row in rows]}
     sheet = db.query(ImportSheet).filter_by(import_id=record.id, tenant_id=current_user.tenant_id).order_by(ImportSheet.created_at.asc()).first()
     if not sheet:
         return {"import_id": import_id, "mode": "raw", "detected_type": record.detected_type or "unknown", "row_count": 0, "columns": [], "rows": []}
 
-    raw_df, profile = _load_sheet_raw_dataframe(db, str(current_user.tenant_id), record.id, sheet.id)
+    raw_df, profile = _load_sheet_raw_dataframe(
+        db, str(current_user.tenant_id), record.id, sheet.id, limit=200
+    )
     sample_df = raw_df.head(10)
-    raw_rows = sample_df.where(pd.notna(sample_df), None).to_dict(orient="records") if not sample_df.empty else []
+    raw_rows = [{k: _sanitize_float(v) for k, v in row.items()} for row in sample_df.to_dict(orient="records")] if not sample_df.empty else []    
     return {
         "import_id": import_id,
         "mode": "raw",

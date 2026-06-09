@@ -200,16 +200,30 @@ export interface BackendKpiResponse {
     delayed_orders_pct: BackendKpiValue;
   };
   charts: {
-    revenue_over_time: ChartPoint[];
-    orders_over_time: ChartPoint[];
-    revenue_by_channel: ChartPoint[];
-    revenue_by_country: ChartPoint[];
-    orders_by_status: ChartPoint[];
-    top_products_revenue: ChartPoint[];
-    top_products_units: ChartPoint[];
-    revenue_by_category: ChartPoint[];
-    product_margin: ChartPoint[];
-    new_vs_returning: { new: number; returning: number };
+    revenue_over_time:           ChartPoint[];
+    orders_over_time:            ChartPoint[];
+    revenue_by_channel:          ChartPoint[];
+    revenue_by_country:          ChartPoint[];
+    orders_by_status:            ChartPoint[];
+    top_products_revenue:        ChartPoint[];
+    top_products_units:          ChartPoint[];
+    revenue_by_category:         ChartPoint[];
+    revenue_by_subcategory:      ChartPoint[];
+    product_margin:              ChartPoint[];
+    new_vs_returning:            { new: number; returning: number };
+    // Nuevos — paso 5
+    revenue_by_year:             { year: number; revenue: number; order_count: number }[];
+    revenue_multi_year:          { year: number; period: number; period_label: string; revenue: number; order_count: number }[];
+    orders_by_channel_over_time: { period: string; channel: string; revenue: number; order_count: number }[];
+    session_metrics: {
+      has_session_data:    boolean;
+      session_count:       number | null;
+      unique_sessions:     number | null;
+      conversion_rate:     number | null;
+      sessions_by_device:  ChartPoint[];
+      sessions_by_source:  ChartPoint[];
+      sessions_by_campaign: ChartPoint[];
+    };
   };
 }
 
@@ -319,6 +333,14 @@ export interface UploadImportResult {
   main_reason?: string | null;
   user_message?: string | null;
   suggestions: string[];
+  multi_sheet?: boolean;
+  sheets_created?: number;
+  sheets_summary?: {
+    filename: string;
+    detected_type: string;
+    valid_rows: number;
+    invalid_rows: number;
+  }[];
 }
 
 

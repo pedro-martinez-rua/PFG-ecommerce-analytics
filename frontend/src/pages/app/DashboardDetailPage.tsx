@@ -361,29 +361,171 @@ export function DashboardDetailPage() {
       )}
 
       {/* Gráficas */}
+      {/* Gráficas */}
       {data.charts && (
-        <section className="grid lg:grid-cols-2 gap-6">
-          <ChartCard title="Revenue en el tiempo" subtitle="Evolución mensual"
-            data={data.charts.revenue_over_time} valuePrefix="€" />
-          <ChartCard title="Pedidos en el tiempo" subtitle="Volumen de pedidos"
-            data={data.charts.orders_over_time} />
-          {data.charts.revenue_by_channel?.length > 0 && (
-            <ChartCard title="Revenue por canal" data={data.charts.revenue_by_channel}
-              type="bar" valuePrefix="€" />
+        <div className="space-y-6">
+
+          {/* Fila 1: series temporales principales */}
+          <section className="grid lg:grid-cols-2 gap-6">
+            <ChartCard
+              title="Revenue en el tiempo"
+              subtitle="Evolución por periodo"
+              data={data.charts.revenue_over_time}
+              valuePrefix="€"
+            />
+            <ChartCard
+              title="Pedidos en el tiempo"
+              subtitle="Volumen de pedidos"
+              data={data.charts.orders_over_time}
+            />
+          </section>
+
+          {/* Fila 2: comparativa anual multilinea */}
+          {data.charts.revenue_multi_year?.length > 0 && (
+            <section className="grid lg:grid-cols-2 gap-6">
+              <ChartCard
+                title="Comparativa anual de revenue"
+                subtitle="Cada línea representa un año"
+                data={data.charts.revenue_multi_year}
+                type="multiline"
+                seriesKey="year"
+                xKey="period_label"
+                valueKey="revenue"
+                valuePrefix="€"
+              />
+              {data.charts.revenue_by_year?.length > 1 && (
+                <ChartCard
+                  title="Revenue total por año"
+                  subtitle="Ingresos acumulados anuales"
+                  data={data.charts.revenue_by_year.map((d: any) => ({
+                    label: String(d.year),
+                    value: d.revenue,
+                  }))}
+                  type="bar"
+                  valuePrefix="€"
+                />
+              )}
+            </section>
           )}
-          {data.charts.top_products_revenue?.length > 0 && (
-            <ChartCard title="Top productos" subtitle="Por revenue generado"
-              data={data.charts.top_products_revenue} type="bar" valuePrefix="€" />
+
+          {/* Fila 3: canales */}
+          {(data.charts.revenue_by_channel?.length > 0 ||
+            data.charts.orders_by_channel_over_time?.length > 0) && (
+            <section className="grid lg:grid-cols-2 gap-6">
+              {data.charts.revenue_by_channel?.length > 0 && (
+                <ChartCard
+                  title="Revenue por canal"
+                  subtitle="Distribución total"
+                  data={data.charts.revenue_by_channel}
+                  type="bar"
+                  valuePrefix="€"
+                />
+              )}
+              {data.charts.orders_by_channel_over_time?.length > 0 && (
+                <ChartCard
+                  title="Canales por periodo"
+                  subtitle="Evolución multicanal en el tiempo"
+                  data={data.charts.orders_by_channel_over_time}
+                  type="multiline"
+                  seriesKey="channel"
+                  xKey="period"
+                  valueKey="revenue"
+                  valuePrefix="€"
+                />
+              )}
+            </section>
           )}
-          {data.charts.revenue_by_category?.length > 0 && (
-            <ChartCard title="Revenue por categoría" data={data.charts.revenue_by_category}
-              type="bar" valuePrefix="€" />
+
+          {/* Fila 4: productos */}
+          {(data.charts.top_products_revenue?.length > 0 ||
+            data.charts.revenue_by_category?.length > 0) && (
+            <section className="grid lg:grid-cols-2 gap-6">
+              {data.charts.top_products_revenue?.length > 0 && (
+                <ChartCard
+                  title="Top productos"
+                  subtitle="Por revenue generado"
+                  data={data.charts.top_products_revenue}
+                  type="bar"
+                  valuePrefix="€"
+                />
+              )}
+              {data.charts.revenue_by_category?.length > 0 && (
+                <ChartCard
+                  title="Revenue por categoría"
+                  data={data.charts.revenue_by_category}
+                  type="bar"
+                  valuePrefix="€"
+                />
+              )}
+            </section>
           )}
-          {data.charts.revenue_by_country?.length > 0 && (
-            <ChartCard title="Top países" data={data.charts.revenue_by_country}
-              type="bar" valuePrefix="€" />
+
+          {/* Fila 5: subcategoría + país */}
+          {(data.charts.revenue_by_subcategory?.length > 0 ||
+            data.charts.revenue_by_country?.length > 0) && (
+            <section className="grid lg:grid-cols-2 gap-6">
+              {data.charts.revenue_by_subcategory?.length > 0 && (
+                <ChartCard
+                  title="Revenue por subcategoría"
+                  data={data.charts.revenue_by_subcategory}
+                  type="bar"
+                  valuePrefix="€"
+                />
+              )}
+              {data.charts.revenue_by_country?.length > 0 && (
+                <ChartCard
+                  title="Top países"
+                  data={data.charts.revenue_by_country}
+                  type="bar"
+                  valuePrefix="€"
+                />
+              )}
+            </section>
           )}
-        </section>
+
+          {/* Fila 6: web / marketing — solo si hay datos */}
+          {data.charts.session_metrics?.has_session_data && (
+            <section>
+              <h2 className="text-lg font-semibold mb-4">Web y Marketing</h2>
+              <div className="grid lg:grid-cols-2 gap-6">
+                {data.charts.session_metrics.sessions_by_device?.length > 0 && (
+                  <ChartCard
+                    title="Sesiones por dispositivo"
+                    data={data.charts.session_metrics.sessions_by_device}
+                    type="donut"
+                  />
+                )}
+                {data.charts.session_metrics.sessions_by_source?.length > 0 && (
+                  <ChartCard
+                    title="Sesiones por fuente UTM"
+                    data={data.charts.session_metrics.sessions_by_source}
+                    type="bar"
+                  />
+                )}
+                {data.charts.session_metrics.sessions_by_campaign?.length > 0 && (
+                  <ChartCard
+                    title="Sesiones por campaña"
+                    subtitle="Top 10 campañas"
+                    data={data.charts.session_metrics.sessions_by_campaign}
+                    type="bar"
+                  />
+                )}
+                {data.charts.session_metrics.conversion_rate !== null && (
+                  <div className="rounded-2xl border bg-card p-6 shadow-sm flex flex-col justify-center">
+                    <p className="text-sm text-muted-foreground mb-1">Tasa de conversión web</p>
+                    <p className="text-4xl font-bold text-foreground">
+                      {data.charts.session_metrics.conversion_rate}%
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {data.charts.session_metrics.unique_sessions?.toLocaleString('es-ES')} sesiones únicas
+                    </p>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+        </div>
       )}
 
       {showInsights && (

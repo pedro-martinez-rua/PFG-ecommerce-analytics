@@ -22,6 +22,7 @@ class OrderLine(Base):
     product_name     = Column(String, nullable=True)
     sku              = Column(String, nullable=True)
     category         = Column(String, nullable=True)
+    subcategory      = Column(String, nullable=True)
     brand            = Column(String, nullable=True)
     quantity         = Column(Numeric(10, 2), nullable=True)
     unit_price       = Column(Numeric(12, 2), nullable=True)

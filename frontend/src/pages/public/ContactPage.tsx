@@ -104,7 +104,7 @@ export function ContactPage() {
                 <p className="font-medium text-foreground">
                   {t('contact.info.emailLabel')}
                 </p>
-                <p className="text-sm text-muted-foreground">support@insightflow.io</p>
+                <p className="text-sm text-muted-foreground">support@CommerceIQ.com</p>
               </div>
             </div>
 

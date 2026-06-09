@@ -15,9 +15,10 @@ class Product(Base):
     import_id        = Column(UUID(as_uuid=True), ForeignKey("imports.id"),
                               nullable=True, index=True)
     external_id      = Column(String, nullable=True, index=True)
-    name             = Column(String, nullable=False)
+    name             = Column(String, nullable=True)
     sku              = Column(String, nullable=True)
     category         = Column(String, nullable=True)
+    subcategory      = Column(String, nullable=True)
     brand            = Column(String, nullable=True)
     unit_cost        = Column(Numeric(12, 2), nullable=True)
     unit_price       = Column(Numeric(12, 2), nullable=True)

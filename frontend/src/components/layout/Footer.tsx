@@ -24,11 +24,6 @@ export function Footer() {
             <h4 className="text-sm font-semibold">{t('footer.sections.product')}</h4>
             <ul className="space-y-2">
               <li>
-                <Link href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  {t('footer.links.features')}
-                </Link>
-              </li>
-              <li>
                 <Link href="/tutorials" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                   {t('footer.links.tutorials')}
                 </Link>

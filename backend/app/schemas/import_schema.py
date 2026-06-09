@@ -53,3 +53,6 @@ class ImportResponse(BaseModel):
     top_errors: List[dict[str, Any]] = Field(default_factory=list)
     top_warnings: List[dict[str, Any]] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
+    multi_sheet: Optional[bool] = None
+    sheets_created: Optional[int] = None
+    sheets_summary: Optional[List[dict[str, Any]]] = None

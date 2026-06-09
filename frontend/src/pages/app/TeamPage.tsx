@@ -43,7 +43,7 @@ function TeamReportCard({ report }: { report: TeamReport }) {
 
   return (
     <Link
-      href={`/app/reports/${report.id}`}
+      href={`/app/team/reports/${report.id}`}
       className="block bg-background border rounded-xl hover:shadow-card transition-shadow group"
     >
       <div className="p-5">

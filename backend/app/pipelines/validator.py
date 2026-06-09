@@ -124,15 +124,14 @@ CUSTOMERS_SCHEMA = DataFrameSchema(
 
 PRODUCTS_SCHEMA = DataFrameSchema(
     columns={
-        "product_name": Column(
-            pa.String, nullable=False, required=True,
-            description="Nombre del producto — obligatorio"
-        ),
-        "sku":          Column(pa.String, nullable=True, required=False),
-        "category":     Column(pa.String, nullable=True, required=False),
-        "brand":        Column(pa.String, nullable=True, required=False),
-        "unit_price":   Column(pa.String, nullable=True, required=False),
-        "unit_cost":    Column(pa.String, nullable=True, required=False),
+        "product_name":        Column(pa.String, nullable=True, required=False),
+        "product_external_id": Column(pa.String, nullable=True, required=False),
+        "sku":                 Column(pa.String, nullable=True, required=False),
+        "category":            Column(pa.String, nullable=True, required=False),
+        "subcategory":         Column(pa.String, nullable=True, required=False),
+        "brand":               Column(pa.String, nullable=True, required=False),
+        "unit_price":          Column(pa.String, nullable=True, required=False),
+        "unit_cost":           Column(pa.String, nullable=True, required=False),
     },
     strict=False,
     coerce=False,
@@ -146,10 +145,13 @@ SCHEMA_MAP = {
 }
 
 MINIMUM_REQUIRED_FIELDS = {
-    "orders":      ["order_date"],
-    "order_lines": [],
-    "customers":   [],
-    "products":    ["product_name"],
+    "orders":       ["order_date"],
+    "order_lines":  [],
+    "customers":    [],
+    "products":     [],
+    "web_sessions": [],
+    "marketing":    [],
+    "refunds":      [],
 }
 
 
@@ -316,6 +318,22 @@ def validate_dataframe(
                 warnings.append({
                     "field": "order_date",
                     "message": "Fecha de pedido ausente — se podrá cargar la línea pero se limitarán KPIs temporales"
+                })
+                
+        # Validación para products: necesita al menos nombre, sku o external_id
+        if upload_type == "products":
+            has_name    = bool(row.get("product_name")) and \
+                          str(row.get("product_name", "")).strip() not in ("", "nan", "None")
+            has_sku     = bool(row.get("sku")) and \
+                          str(row.get("sku", "")).strip() not in ("", "nan", "None")
+            has_ext_id  = bool(row.get("product_external_id")) and \
+                          str(row.get("product_external_id", "")).strip() not in ("", "nan", "None")
+            if not has_name and not has_sku and not has_ext_id:
+                row_errors.append({
+                    "field":      "product_name / sku / product_external_id",
+                    "error_type": "missing_product_identifier",
+                    "value":      None,
+                    "message":    "Se necesita al menos nombre, SKU o ID de producto",
                 })
 
         # Clasificar

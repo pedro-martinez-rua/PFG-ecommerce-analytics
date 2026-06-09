@@ -24,6 +24,9 @@ from app.services.kpi_calculator import (
     calc_delayed_orders_pct, calc_refund_rate,
     calc_revenue_over_time, calc_revenue_by_channel,
     calc_revenue_by_country, calc_orders_by_status, calc_orders_over_time,
+    calc_revenue_by_year, calc_revenue_multi_year,
+    calc_orders_by_channel_over_time, calc_revenue_by_subcategory,
+    calc_session_metrics,
 )
 
 # RESOLUCIÓN DE PERIODOS
@@ -88,6 +91,8 @@ def load_orders(
             currency, channel, status, payment_method,
             shipping_country, shipping_region,
             delivery_days::float, is_returned,
+            utm_source, utm_medium, utm_campaign,
+            session_id, device_type,
             COALESCE(customer_reference, customer_id::text) AS customer_id,
             import_id::text
         FROM orders
@@ -142,6 +147,36 @@ def load_order_lines(
           AND o.order_date >= :date_from
           AND o.order_date <= :date_to
           {import_filter}
+    """), params)
+
+    rows = result.fetchall()
+    return pd.DataFrame(rows, columns=list(result.keys())) if rows else pd.DataFrame()
+
+def load_revenue_monthly(
+    db: Session,
+    tenant_id: str,
+    import_ids: Optional[List[str]] = None,
+) -> pd.DataFrame:
+    """
+    Carga ingresos mensuales agregados desde la vista v_revenue_monthly.
+    Más eficiente que agrupar orders en Python para periodos largos.
+    """
+    params = {"tenant_id": tenant_id}
+    import_filter = _build_import_filter_sql("import_id", import_ids, params)
+
+    result = db.execute(text(f"""
+        SELECT
+            month, year, month_num,
+            order_count,
+            total_revenue::float,
+            net_revenue::float,
+            total_discounts::float,
+            total_cogs::float,
+            total_refunds::float
+        FROM v_revenue_monthly
+        WHERE tenant_id = :tenant_id
+          {import_filter}
+        ORDER BY month ASC
     """), params)
 
     rows = result.fetchall()
@@ -442,6 +477,13 @@ def compute_kpis(
 
     # Cobertura
     coverage = check_data_coverage(orders_df, lines_df)
+    
+    has_web_data = (
+        "session_id"   in orders_df.columns and orders_df["session_id"].notna().sum() > 0 or
+        "utm_source"   in orders_df.columns and orders_df["utm_source"].notna().sum() > 0 or
+        "device_type"  in orders_df.columns and orders_df["device_type"].notna().sum() > 0 or
+        "utm_campaign" in orders_df.columns and orders_df["utm_campaign"].notna().sum() > 0
+    ) if not orders_df.empty else False
 
     # CHANGE: preparar históricos necesarios para KPIs de clientes
     all_orders_hist_df = _with_parsed_order_date(all_orders_df)
@@ -575,19 +617,33 @@ def compute_kpis(
                               if delayed_pct else _missing_kpi("Sin datos de entrega"),
     }
 
-    # ── Charts ──
     charts = {
-        "revenue_over_time":    calc_revenue_over_time(orders_df, granularity),
-        "orders_over_time":     calc_orders_over_time(orders_df, granularity),
-        "revenue_by_channel":   calc_revenue_by_channel(orders_df),
-        "revenue_by_country":   calc_revenue_by_country(orders_df),
-        "orders_by_status":     calc_orders_by_status(orders_df),
-        "top_products_revenue": calc_top_products_revenue(lines_df),
-        "top_products_units":   calc_top_products_units(lines_df),
-        "revenue_by_category":  calc_revenue_by_category(lines_df),
-        "product_margin":       product_margin_data if pm_avail != "missing" else [],
-        "new_vs_returning":     new_vs_ret if new_vs_ret else {"new": 0, "returning": 0},
+        "revenue_over_time":            calc_revenue_over_time(orders_df, granularity),
+        "orders_over_time":             calc_orders_over_time(orders_df, granularity),
+        "revenue_by_channel":           calc_revenue_by_channel(orders_df),
+        "revenue_by_country":           calc_revenue_by_country(orders_df),
+        "orders_by_status":             calc_orders_by_status(orders_df),
+        "top_products_revenue":         calc_top_products_revenue(lines_df),
+        "top_products_units":           calc_top_products_units(lines_df),
+        "revenue_by_category":          calc_revenue_by_category(lines_df),
+        "revenue_by_subcategory":       calc_revenue_by_subcategory(lines_df),
+        "product_margin":               product_margin_data if pm_avail != "missing" else [],
+        "new_vs_returning":             new_vs_ret if new_vs_ret else {"new": 0, "returning": 0},
+        # Nuevos — paso 5
+        "revenue_by_year":              calc_revenue_by_year(orders_df),
+        "revenue_multi_year":           calc_revenue_multi_year(orders_df, granularity),
+        "orders_by_channel_over_time":  calc_orders_by_channel_over_time(orders_df, granularity),
+        "session_metrics":              calc_session_metrics(orders_df) if has_web_data else {
+            "has_session_data": False,
+            "session_count": None,
+            "unique_sessions": None,
+            "conversion_rate": None,
+            "sessions_by_device": [],
+            "sessions_by_source": [],
+            "sessions_by_campaign": [],
+        },
     }
+    
     return _make_serializable({
         "period":       p_label,
         "date_from":    p_start.isoformat(),

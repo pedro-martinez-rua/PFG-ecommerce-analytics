@@ -1,20 +1,10 @@
-"""
-import_orchestrator.py — Capa de orquestación del pipeline.
-
-Coordina todas las capas en orden:
-file_parser → detector → mapper → validator → transformer → canonical_loader
-
-Tipos soportados: orders, order_lines, customers, products, mixed.
-import_id en todas las entidades para trazabilidad y delete en cascada.
-Resolución automática de relaciones entre imports distintos.
-Los datos del usuario nunca salen del servidor.
-"""
 import uuid
 import hashlib
 import pandas as pd
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from decimal import Decimal
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.pipelines.file_parser import parse_file, ParsedSheet
 from app.pipelines.detector import detect_type_with_confidence, UploadType
@@ -47,11 +37,48 @@ SENSITIVE_FIELDS_BLOCKLIST = {
 }
 
 def _sanitize_extra(extra: dict) -> dict:
-    return {
+    sanitized = {
         k: v for k, v in extra.items()
         if k.lower().replace(" ", "_").replace("-", "_")
         not in SENSITIVE_FIELDS_BLOCKLIST
     }
+    return _json_safe(sanitized)
+
+def _json_safe(value):
+    """
+    Convierte valores Python/Pandas/Decimal a tipos compatibles con JSONB.
+    Usar solo para columnas JSONB: raw_data, mapped_data, transformed_data,
+    validation_errors, extra_attributes.
+    """
+    if value is None:
+        return None
+
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+
+    if isinstance(value, Decimal):
+        return float(value)
+
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(v) for v in value]
+
+    # Numpy scalars: int64, float64, bool_, etc.
+    if hasattr(value, "item"):
+        try:
+            return _json_safe(value.item())
+        except Exception:
+            pass
+
+    return value
 
 def _generate_dedup_key(transformed: dict) -> str | None:
     date_val  = str(transformed.get("order_date", ""))
@@ -97,8 +124,50 @@ def run_import(
         db.commit()
         return _failed_response(import_id, filename, str(e))
 
-    return _process_parsed_sheets(db, tenant_id, import_record, sheets)
+    # Si el archivo tiene una sola hoja, flujo normal
+    if len(sheets) <= 1:
+        return _process_parsed_sheets(db, tenant_id, import_record, sheets)
 
+    # Si tiene múltiples hojas, crear un import independiente por hoja.
+    import_record.status = "completed"
+    import_record.completed_at = datetime.now(timezone.utc)
+    db.commit()
+
+    results = []
+    for sheet in sheets:
+        sheet_filename = f"{filename}: {sheet.sheet_name}"
+        sheet_record = Import(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            filename=sheet_filename,
+            file_format=file_format,
+            file_size_bytes=file_size,
+            status="processing"
+        )
+        db.add(sheet_record)
+        db.commit()
+        db.refresh(sheet_record)
+        result = _process_parsed_sheets(db, tenant_id, sheet_record, [sheet])
+        results.append(result)
+
+    # Borrar el import placeholder (0 filas, nombre sin hoja)
+    db.execute(text("DELETE FROM imports WHERE id = :iid AND tenant_id = :tid"),
+               {"iid": import_id, "tid": tenant_id})
+    db.commit()
+
+    first = results[0] if results else _failed_response(import_id, filename, "Sin hojas procesables")
+    first["multi_sheet"] = True
+    first["sheets_created"] = len(results)
+    first["sheets_summary"] = [
+        {
+            "filename": f"{filename}: {s.sheet_name}",
+            "detected_type": r.get("detected_type", "unknown"),
+            "valid_rows": r.get("valid_rows", 0),
+            "invalid_rows": r.get("invalid_rows", 0),
+        }
+        for s, r in zip(sheets, results)
+    ]
+    return first
 
 def reprocess_import_with_mapping(
     db: Session,
@@ -151,10 +220,41 @@ def reprocess_import_with_mapping(
     if not parsed_sheets:
         raise ValueError("No se encontró la hoja solicitada para reprocesar")
 
-    # 2) Limpiar SOLO datos normalizados/derivados.
+   # 2) Limpiar SOLO datos normalizados/derivados.
     #    No borrar ImportSheet ni RawUpload aquí, porque forman parte
     #    de la base raw que se usa para preview y reprocesado.
     try:
+        # Desvincular FKs cruzadas de otros imports antes de borrar
+        db.execute(text("""
+            UPDATE order_lines
+            SET order_id = NULL
+            WHERE tenant_id = :tid
+              AND order_id IN (
+                  SELECT id FROM orders
+                  WHERE tenant_id = :tid AND import_id = :iid
+              )
+        """), {"tid": tenant_id, "iid": import_id})
+
+        db.execute(text("""
+            UPDATE order_lines
+            SET product_id = NULL
+            WHERE tenant_id = :tid
+              AND product_id IN (
+                  SELECT id FROM products
+                  WHERE tenant_id = :tid AND import_id = :iid
+              )
+        """), {"tid": tenant_id, "iid": import_id})
+
+        db.execute(text("""
+            UPDATE orders
+            SET customer_id = NULL
+            WHERE tenant_id = :tid
+              AND customer_id IN (
+                  SELECT id FROM customers
+                  WHERE tenant_id = :tid AND import_id = :iid
+              )
+        """), {"tid": tenant_id, "iid": import_id})
+
         db.query(OrderLine).filter_by(
             import_id=import_id,
             tenant_id=tenant_id,
@@ -264,7 +364,6 @@ def _process_parsed_sheets(
         "suggestions": sheet_results[0].get("suggestions", []) if sheet_results else [],
     }
 
-
 def _process_sheet(
     db: Session,
     tenant_id: str,
@@ -317,9 +416,9 @@ def _process_sheet(
         persist_mapping(db, tenant_id, upload_type.value, mapping_with_confidence, import_id, confirmed=False)
 
     mapping = {col: info["canonical"] for col, info in mapping_with_confidence.items() if info.get("canonical")}
-    required_fields = ["order_date"] if upload_type.value in ("orders", "mixed") else (["product_name"] if upload_type.value == "products" else [])
+    required_fields = ["order_date"] if upload_type.value in ("orders", "mixed") else []
     missing_required = [field for field in required_fields if field not in mapping.values()]
-    low_confidence = upload_type == UploadType.UNKNOWN or confidence < 0.3
+    low_confidence = upload_type == UploadType.UNKNOWN
     requires_review = bool(missing_required or low_confidence)
 
     if requires_review and not manual_mapping:
@@ -366,6 +465,10 @@ def _process_sheet(
         elif upload_type == UploadType.PRODUCTS:
             existing_ids = _get_existing_external_ids(db, tenant_id, Product)
             valid_loaded = _bulk_write_products(db, tenant_id, import_id, processable_df, existing_ids, BATCH_SIZE)
+        elif upload_type in (UploadType.WEB_SESSIONS, UploadType.MARKETING, UploadType.REFUNDS):
+            # Estos tipos no tienen tabla normalizada propia.
+            # Los datos quedan en raw_uploads y se marcan como válidos.
+            valid_loaded = len(processable_df)    
 
     import_sheet.valid_rows = valid_loaded
     import_sheet.invalid_rows = summary["invalid_rows"]
@@ -388,7 +491,6 @@ def _process_sheet(
         "suggestions": [],
     }
 
-
 def _stage_raw_rows(db, tenant_id, import_id, sheet_id, sheet):
     batch = []
     for idx, row in sheet.dataframe.iterrows():
@@ -402,7 +504,7 @@ def _stage_raw_rows(db, tenant_id, import_id, sheet_id, sheet):
             "upload_type": None,
             "filename": sheet.sheet_name,
             "row_index": int(idx),
-            "raw_data": row_dict,
+            "raw_data": _json_safe(row_dict),
             "mapped_data": {},
             "transformed_data": {},
             "validation_errors": [],
@@ -415,23 +517,55 @@ def _stage_raw_rows(db, tenant_id, import_id, sheet_id, sheet):
         db.bulk_insert_mappings(RawUpload, batch)
         db.commit()
 
-
-def _apply_validation_results_to_raw_rows(db, tenant_id, import_id, sheet_id, validation_results, original_df, rename_map):
+def _apply_validation_results_to_raw_rows(
+    db,
+    tenant_id,
+    import_id,
+    sheet_id,
+    validation_results,
+    original_df,
+    rename_map
+):
     for result in validation_results:
         if result.status.value == "valid":
             continue
-        row_dict = original_df.loc[result.row_index].where(pd.notna(original_df.loc[result.row_index]), None).to_dict() if result.row_index in original_df.index else {}
-        mapped = {rename_map.get(k, k): v for k, v in row_dict.items() if rename_map.get(k, k)}
-        transformed = transform_row(mapped) if mapped else {}
-        db.query(RawUpload).filter_by(import_id=import_id, tenant_id=tenant_id, sheet_id=sheet_id, row_index=result.row_index).update({
-            RawUpload.mapped_data: mapped,
-            RawUpload.transformed_data: transformed,
-            RawUpload.validation_errors: result.errors,
-            RawUpload.status: result.status.value,
-            RawUpload.error_message: '; '.join(e.get('message', '') for e in result.errors)[:500] if result.errors else None,
-        }, synchronize_session=False)
-    db.commit()
 
+        if result.row_index in original_df.index:
+            row_dict = (
+                original_df
+                .loc[result.row_index]
+                .where(pd.notna(original_df.loc[result.row_index]), None)
+                .to_dict()
+            )
+        else:
+            row_dict = {}
+
+        mapped = {
+            rename_map.get(k, k): v
+            for k, v in row_dict.items()
+            if rename_map.get(k, k)
+        }
+
+        transformed = transform_row(mapped) if mapped else {}
+
+        db.query(RawUpload).filter_by(
+            import_id=import_id,
+            tenant_id=tenant_id,
+            sheet_id=sheet_id,
+            row_index=result.row_index,
+        ).update({
+            RawUpload.mapped_data: _json_safe(mapped),
+            RawUpload.transformed_data: _json_safe(transformed),
+            RawUpload.validation_errors: _json_safe(result.errors),
+            RawUpload.status: result.status.value,
+            RawUpload.error_message: (
+                "; ".join(e.get("message", "") for e in result.errors)[:500]
+                if result.errors else None
+            ),
+        }, synchronize_session=False)
+
+    db.commit()
+    
 # HELPERS DE RENDIMIENTO
 def _get_existing_external_ids(db: Session, tenant_id: str, model) -> set:
     rows = db.query(model.external_id).filter(
@@ -490,11 +624,18 @@ def _bulk_write_orders(
             "payment_method":   transformed.get("payment_method"),
             "shipping_country": transformed.get("shipping_country"),
             "shipping_region":  transformed.get("shipping_region"),
+            "shipping_city":    transformed.get("shipping_city"),
+            "postal_code":      transformed.get("postal_code"),
+            "shipping_date":    transformed.get("shipping_date"),
+            "shipping_type":    transformed.get("shipping_type"),
             "delivery_days":    transformed.get("delivery_days"),
             "is_returned":      transformed.get("is_returned", False),
             "device_type":      transformed.get("device_type"),
             "utm_source":       transformed.get("utm_source"),
             "utm_campaign":     transformed.get("utm_campaign"),
+            "utm_medium":       transformed.get("utm_medium"),
+            "utm_content":      transformed.get("utm_content"),
+            "utm_term":         transformed.get("utm_term"),
             "session_id":       transformed.get("session_id"),
             "extra_attributes": extra,
         })
@@ -510,6 +651,7 @@ def _bulk_write_orders(
                 "product_name":    transformed.get("product_name"),
                 "sku":             transformed.get("sku"),
                 "category":        transformed.get("category"),
+                "subcategory":     transformed.get("subcategory"),
                 "brand":           transformed.get("brand"),
                 "quantity":        transformed.get("quantity"),
                 "unit_price":      transformed.get("unit_price"),
@@ -587,12 +729,13 @@ def _bulk_write_order_lines(
             "id":              str(uuid.uuid4()),
             "tenant_id":       tenant_id,
             "import_id":       import_id,
-            "order_id":        None,         # resolver vincula después
-            "product_id":      None,         # resolver vincula después
+            "order_id":        None,
+            "product_id":      None,
             "external_id":     ext_id,
             "product_name":    transformed.get("product_name"),
             "sku":             transformed.get("sku"),
             "category":        transformed.get("category"),
+            "subcategory":     transformed.get("subcategory"),
             "brand":           transformed.get("brand"),
             "quantity":        transformed.get("quantity"),
             "unit_price":      transformed.get("unit_price"),
@@ -658,8 +801,11 @@ def _bulk_write_customers(
                                  if transformed.get("customer_external_id") else None,
             "email":            transformed.get("customer_email"),
             "full_name":        transformed.get("customer_name"),
-            "country":          transformed.get("country"),
-            "region":           transformed.get("region"),
+            "phone_number":     transformed.get("phone_number"),
+            "country":          transformed.get("shipping_country") or transformed.get("country"),
+            "region":           transformed.get("shipping_region") or transformed.get("region"),
+            "city":             transformed.get("shipping_city"),
+            "postal_code":      transformed.get("postal_code"),
             "total_orders":     0,
             "total_spent":      0,
             "avg_order_value":  None,
@@ -721,9 +867,10 @@ def _bulk_write_products(
             "import_id":        import_id,
             "external_id":      str(transformed["product_external_id"])
                                  if transformed.get("product_external_id") else None,
-            "name":             transformed.get("product_name", "Sin nombre"),
+            "name":             transformed.get("product_name"),
             "sku":              transformed.get("sku"),
             "category":         transformed.get("category"),
+            "subcategory":      transformed.get("subcategory"),
             "brand":            transformed.get("brand"),
             "unit_cost":        transformed.get("unit_cost"),
             "unit_price":       transformed.get("unit_price"),

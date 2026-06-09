@@ -29,10 +29,10 @@ ESTRUCTURA OBLIGATORIA — SIGUE ESTE FORMATO EXACTO:
 [3-4 frases resumiendo el estado real del negocio con los números más importantes. Incluye si va bien, regular o necesita atención urgente. Menciona revenue total, pedidos y AOV con sus valores exactos.]
 
 **Lo que está funcionando bien**
-[2-3 puntos con lo que el negocio hace bien, con datos concretos que lo demuestren. Si el margen es bueno, dilo y explica qué significa. Si hay crecimiento, cuantifícalo.]
+[2-3 puntos con lo que el negocio hace bien, con datos concretos que lo demuestren. Si el margen es bueno, dilo y explica qué significa. Si hay crecimiento, cuantifícalo. Si hay datos de tráfico web o campañas disponibles, inclúyelos en el análisis como un punto adicional.]
 
 **Lo que necesita atención**
-[2-3 puntos con los problemas o riesgos detectados, con datos exactos. Explica por qué es un problema y cuál es el impacto real en dinero o clientes perdidos si no se corrige.]
+[2-3 puntos con los problemas o riesgos detectados, con datos exactos. Explica por qué es un problema y cuál es el impacto real en dinero o clientes perdidos si no se corrige. Si hay datos de tráfico web o campañas disponibles, inclúyelos en el análisis como un punto adicional..]
 
 **Plan de acción: cosas concretas que puedes hacer**
 [5 recomendaciones MUY específicas y accionables, ordenadas de más a menos urgente. Cada una debe tener:
@@ -56,6 +56,8 @@ BENCHMARKS DEL SECTOR E-COMMERCE
 - Tasa de descuento sobre revenue: <5% saludable, 5-15% moderado, >20% puede erosionar márgenes
 - Pedidos retrasados: <10% aceptable, >20% problema de operación
 - Días de entrega: <3 días excelente, 3-7 normal, >10 días riesgo de abandono
+- Tasa de conversión web: <1% baja, 1-3% normal, >3% excelente
+- Tráfico móvil: si >60% del tráfico es móvil, la experiencia mobile es crítica
 
 CÓMO INTERPRETAR LOS DATOS QUE RECIBES
 - Si "has_cogs: false" → no puedes calcular margen real, indícalo
@@ -65,6 +67,10 @@ CÓMO INTERPRETAR LOS DATOS QUE RECIBES
 - Si hay datos de canales, identifica el canal estrella y el canal con más potencial de mejora
 - Si hay datos de productos, identifica el héroe (más revenue) y el producto con mejor margen
 - El ratio pedidos/clientes únicos te dice cuánto repite de media un cliente — úsalo
+- Si hay datos de tráfico web (TRÁFICO Y SESIONES WEB): analiza la tasa de conversión, el dispositivo dominante y las fuentes de tráfico más rentables. Compara la tasa de conversión con el benchmark del sector (1-3% es normal en e-commerce).
+- Si hay datos de campañas (fuentes UTM): identifica qué canal trae más tráfico y cuál convierte mejor. Da recomendaciones específicas sobre dónde invertir más.
+- Si hay comparativa anual (COMPARATIVA ANUAL): úsala para contextualizar el crecimiento real del negocio año a año.
+- Si hay datos de subcategorías (REVENUE POR SUBCATEGORÍA): identifica la subcategoría estrella y la que tiene más potencial.
 
 EXTENSIÓN: Usa las palabras que necesites. Ni más ni menos. Lo que importa es que cada frase aporte valor real al dueño del negocio. Elimina cualquier relleno.
 CONCISIÓN: El análisis completo debe caber en 600-700 palabras. Sé directo y elimina cualquier repetición. Si una idea ya se mencionó, no la repitas.
@@ -274,7 +280,56 @@ def _build_context(kpis: dict, coverage: dict, charts: dict, period: str) -> str
         lines.append(f"Datos disponibles: {', '.join(available)}")
     if missing:
         lines.append(f"Datos no disponibles (no analizar): {', '.join(missing)}")
+        
+    # Sesiones web y fuentes de tráfico
+    session = charts.get("session_metrics", {})
+    if session and session.get("has_session_data"):
+        lines += ["", "── TRÁFICO Y SESIONES WEB ──"]
+        if session.get("conversion_rate") is not None:
+            lines.append(f"Tasa de conversión web: {session['conversion_rate']:.1f}%")
+        if session.get("unique_sessions"):
+            lines.append(f"Sesiones únicas registradas: {session['unique_sessions']:,}")
+        if session.get("sessions_by_device"):
+            total_dev = sum(d["value"] for d in session["sessions_by_device"]) or 1
+            device_str = ", ".join(
+                f"{d['label']}: {d['value']/total_dev*100:.0f}%"
+                for d in sorted(session["sessions_by_device"], key=lambda x: x["value"], reverse=True)
+            )
+            lines.append(f"Distribución por dispositivo: {device_str}")
+        if session.get("sessions_by_source"):
+            total_src = sum(s["value"] for s in session["sessions_by_source"]) or 1
+            top_sources = sorted(session["sessions_by_source"], key=lambda x: x["value"], reverse=True)[:5]
+            src_str = ", ".join(
+                f"{s['label']}: {s['value']/total_src*100:.0f}%"
+                for s in top_sources
+            )
+            lines.append(f"Top fuentes de tráfico (UTM): {src_str}")
+        if session.get("sessions_by_campaign"):
+            top_camps = sorted(session["sessions_by_campaign"], key=lambda x: x["value"], reverse=True)[:5]
+            camp_str = ", ".join(f"{c['label']}: {c['value']} sesiones" for c in top_camps)
+            lines.append(f"Top campañas: {camp_str}")
 
+    # Subcategorías
+    subcat_data = charts.get("revenue_by_subcategory", [])
+    if subcat_data:
+        lines += ["", "── REVENUE POR SUBCATEGORÍA ──"]
+        total_sub = sum(s["value"] for s in subcat_data) or 1
+        for s in sorted(subcat_data, key=lambda x: x["value"], reverse=True)[:6]:
+            pct = s["value"] / total_sub * 100
+            lines.append(f"  {s['label']}: {s['value']:,.2f} ({pct:.1f}%)")
+
+    # Comparativa anual
+    rev_by_year = charts.get("revenue_by_year", [])
+    if len(rev_by_year) >= 2:
+        lines += ["", "── COMPARATIVA ANUAL ──"]
+        for y in sorted(rev_by_year, key=lambda x: x["year"]):
+            lines.append(f"  {y['year']}: {y['revenue']:,.2f} ({y['order_count']} pedidos)")
+        years = sorted(rev_by_year, key=lambda x: x["year"])
+        if years[-1]["revenue"] and years[-2]["revenue"]:
+            yoy = (years[-1]["revenue"] - years[-2]["revenue"]) / years[-2]["revenue"] * 100
+            lines.append(f"Crecimiento YoY ({years[-2]['year']}→{years[-1]['year']}): "
+                         f"{'↑' if yoy > 0 else '↓'}{abs(yoy):.1f}%")
+            
     return "\n".join(lines)
 
 

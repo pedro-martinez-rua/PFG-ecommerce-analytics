@@ -308,6 +308,251 @@ def calc_refund_rate(orders_df: pd.DataFrame) -> Optional[float]:
 
 
 # ─────────────────────────────────────────────
+# GRUPO F — COMPARATIVA ANUAL
+# ─────────────────────────────────────────────
+
+def calc_revenue_by_year(orders_df: pd.DataFrame) -> list[dict]:
+    """
+    Ingresos totales agrupados por año.
+    Devuelve [{year, revenue, order_count}] ordenado ASC.
+    """
+    if orders_df.empty or "total_amount" not in orders_df.columns:
+        return []
+    df = orders_df.copy()
+    df["total_amount"] = pd.to_numeric(df["total_amount"], errors="coerce")
+    df["order_date"]   = pd.to_datetime(df["order_date"], errors="coerce")
+    df = df.dropna(subset=["order_date"])
+    df["year"] = df["order_date"].dt.year
+
+    grouped = (
+        df.groupby("year")
+        .agg(revenue=("total_amount", "sum"), order_count=("total_amount", "count"))
+        .reset_index()
+        .sort_values("year")
+    )
+    return [
+        {
+            "year":        int(row["year"]),
+            "revenue":     round(float(row["revenue"]), 2),
+            "order_count": int(row["order_count"]),
+        }
+        for _, row in grouped.iterrows()
+    ]
+
+
+def calc_revenue_multi_year(
+    orders_df: pd.DataFrame,
+    granularity: str = "month",
+) -> list[dict]:
+    """
+    Revenue por periodo (mes o día) desglosado por año.
+    Útil para gráfico multilinea donde cada línea es un año.
+    Devuelve [{year, period, revenue, order_count}].
+    """
+    if orders_df.empty or "total_amount" not in orders_df.columns:
+        return []
+    df = orders_df.copy()
+    df["total_amount"] = pd.to_numeric(df["total_amount"], errors="coerce")
+    df["order_date"]   = pd.to_datetime(df["order_date"], errors="coerce")
+    df = df.dropna(subset=["order_date", "total_amount"])
+    df["year"] = df["order_date"].dt.year
+
+    if granularity == "month":
+        df["period"] = df["order_date"].dt.month
+        df["period_label"] = df["order_date"].dt.strftime("%b")  # Jan, Feb...
+    else:
+        df["period"] = df["order_date"].dt.dayofyear
+        df["period_label"] = df["order_date"].dt.strftime("%m-%d")
+
+    grouped = (
+        df.groupby(["year", "period", "period_label"])
+        .agg(revenue=("total_amount", "sum"), order_count=("total_amount", "count"))
+        .reset_index()
+        .sort_values(["year", "period"])
+    )
+    return [
+        {
+            "year":         int(row["year"]),
+            "period":       int(row["period"]),
+            "period_label": row["period_label"],
+            "revenue":      round(float(row["revenue"]), 2),
+            "order_count":  int(row["order_count"]),
+        }
+        for _, row in grouped.iterrows()
+    ]
+
+
+# ─────────────────────────────────────────────
+# GRUPO G — CANALES POR TIEMPO
+# ─────────────────────────────────────────────
+
+def calc_orders_by_channel_over_time(
+    orders_df: pd.DataFrame,
+    granularity: str = "month",
+    top_n: int = 5,
+) -> list[dict]:
+    """
+    Revenue y pedidos por canal a lo largo del tiempo.
+    Devuelve solo los top_n canales por revenue total para no saturar el gráfico.
+    Formato: [{period, channel, revenue, order_count}].
+    """
+    if orders_df.empty or "channel" not in orders_df.columns:
+        return []
+    df = orders_df.copy()
+    df["total_amount"] = pd.to_numeric(df["total_amount"], errors="coerce")
+    df["order_date"]   = pd.to_datetime(df["order_date"], errors="coerce")
+    df = df.dropna(subset=["order_date", "channel"])
+
+    if granularity == "month":
+        df["period"] = df["order_date"].dt.to_period("M").astype(str)
+    else:
+        df["period"] = df["order_date"].dt.date.astype(str)
+
+    # Identificar top canales por revenue global
+    top_channels = (
+        df.groupby("channel")["total_amount"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(top_n)
+        .index.tolist()
+    )
+    df = df[df["channel"].isin(top_channels)]
+
+    grouped = (
+        df.groupby(["period", "channel"])
+        .agg(revenue=("total_amount", "sum"), order_count=("total_amount", "count"))
+        .reset_index()
+        .sort_values(["period", "channel"])
+    )
+    return [
+        {
+            "period":      row["period"],
+            "channel":     row["channel"],
+            "revenue":     round(float(row["revenue"]), 2),
+            "order_count": int(row["order_count"]),
+        }
+        for _, row in grouped.iterrows()
+    ]
+
+
+# ─────────────────────────────────────────────
+# GRUPO H — SUBCATEGORÍA
+# ─────────────────────────────────────────────
+
+def calc_revenue_by_subcategory(lines_df: pd.DataFrame) -> list[dict]:
+    """Revenue por subcategoría de producto."""
+    if lines_df.empty or "subcategory" not in lines_df.columns:
+        return []
+    df = lines_df.copy()
+    df["line_total"] = pd.to_numeric(df.get("line_total"), errors="coerce")
+    grouped = (
+        df.dropna(subset=["subcategory"])
+        .groupby("subcategory")["line_total"]
+        .sum()
+        .sort_values(ascending=False)
+        .reset_index()
+    )
+    return [
+        {"label": row["subcategory"], "value": round(float(row["line_total"]), 2)}
+        for _, row in grouped.iterrows()
+    ]
+
+
+# ─────────────────────────────────────────────
+# GRUPO I — MÉTRICAS WEB / MARKETING
+# ─────────────────────────────────────────────
+
+def calc_session_metrics(orders_df: pd.DataFrame) -> dict:
+    """
+    Métricas de sesiones web extraídas de los datos de pedidos.
+    Solo disponibles si el dataset contiene session_id, utm_source o device_type.
+    """
+    result = {
+        "has_session_data":    False,
+        "session_count":       None,
+        "unique_sessions":     None,
+        "conversion_rate":     None,
+        "sessions_by_device":  [],
+        "sessions_by_source":  [],
+        "sessions_by_campaign": [],
+    }
+
+    if orders_df.empty:
+        return result
+
+    # Detectar si hay datos de sesión
+    has_session  = "session_id"  in orders_df.columns and \
+                   orders_df["session_id"].notna().sum() > 0
+    has_source   = "utm_source"  in orders_df.columns and \
+                   orders_df["utm_source"].notna().sum() > 0
+    has_device   = "device_type" in orders_df.columns and \
+                   orders_df["device_type"].notna().sum() > 0
+    has_campaign = "utm_campaign" in orders_df.columns and \
+                   orders_df["utm_campaign"].notna().sum() > 0
+
+    if not any([has_session, has_source, has_device, has_campaign]):
+        return result
+
+    result["has_session_data"] = True
+
+    # Sesiones únicas
+    if has_session:
+        unique = int(orders_df["session_id"].dropna().nunique())
+        total  = int(orders_df["session_id"].dropna().count())
+        result["unique_sessions"] = unique
+        result["session_count"]   = total
+        # Conversion rate: pedidos con session_id / sesiones únicas
+        orders_with_session = int(orders_df["session_id"].notna().sum())
+        if unique > 0:
+            result["conversion_rate"] = round((orders_with_session / unique) * 100, 2)
+
+    # Distribución por dispositivo
+    if has_device:
+        device_counts = (
+            orders_df.dropna(subset=["device_type"])
+            .groupby("device_type")
+            .size()
+            .sort_values(ascending=False)
+            .reset_index(name="count")
+        )
+        result["sessions_by_device"] = [
+            {"label": row["device_type"], "value": int(row["count"])}
+            for _, row in device_counts.iterrows()
+        ]
+
+    # Distribución por fuente UTM
+    if has_source:
+        source_counts = (
+            orders_df.dropna(subset=["utm_source"])
+            .groupby("utm_source")
+            .size()
+            .sort_values(ascending=False)
+            .head(10)
+            .reset_index(name="count")
+        )
+        result["sessions_by_source"] = [
+            {"label": row["utm_source"], "value": int(row["count"])}
+            for _, row in source_counts.iterrows()
+        ]
+
+    # Distribución por campaña
+    if has_campaign:
+        campaign_counts = (
+            orders_df.dropna(subset=["utm_campaign"])
+            .groupby("utm_campaign")
+            .size()
+            .sort_values(ascending=False)
+            .head(10)
+            .reset_index(name="count")
+        )
+        result["sessions_by_campaign"] = [
+            {"label": row["utm_campaign"], "value": int(row["count"])}
+            for _, row in campaign_counts.iterrows()
+        ]
+
+    return result
+
+# ─────────────────────────────────────────────
 # GRÁFICAS — SERIES TEMPORALES Y DISTRIBUCIONES
 # ─────────────────────────────────────────────
 

@@ -98,6 +98,31 @@ CANONICAL_ALIASES: dict[str, list[str]] = {
         "state_province","billing_state","shipping_state",
         "county","territory","province","prefecture",
     ],
+    "shipping_city": [
+        "city","ciudad","shipping_city","ship_city","town",
+        "locality","billing_city","delivery_city","municipio",
+        "ciudad_envio","ciudad_destino",
+    ],
+    "postal_code": [
+        "postal_code","zip","zip_code","postcode","codigo_postal",
+        "cp","zipcode","pin_code","shipping_zip","billing_zip",
+        "ship_zip","delivery_zip",
+    ],
+    "shipping_address": [
+        "address","direccion","shipping_address","ship_address",
+        "billing_address","street_address","delivery_address",
+        "address_line1","address_line_1","direccion_envio",
+    ],
+    "shipping_date": [
+        "shipping_date","shipped_at","ship_date","fecha_envio",
+        "dispatch_date","dispatched_at","delivery_date","sent_date",
+        "fulfillment_date","fulfilled_at","fecha_despacho",
+    ],
+    "shipping_type": [
+        "shipping_type","ship_method","shipping_method","tipo_envio",
+        "delivery_method","delivery_type","carrier","courier",
+        "shipping_service","fulfillment_type","servicio_envio",
+    ],
     "delivery_days": [
         "delivery_days","dias_entrega","days_to_deliver",
         "lead_time","shipping_days","days_for_shipping",
@@ -114,7 +139,51 @@ CANONICAL_ALIASES: dict[str, list[str]] = {
     ],
     "utm_source":   ["utm_source","fuente_trafico","traffic_source","ref_source"],
     "utm_campaign": ["utm_campaign","campaign","campaña","campaign_name","promo_code"],
+    "utm_medium":   ["utm_medium","medium","canal_utm","traffic_medium"],
+    "utm_content":  ["utm_content","ad_content","content","creative"],
+    "utm_term":     ["utm_term","keyword","search_term","term"],
     "device_type":  ["device_type","device","dispositivo","device_category","platform"],
+
+    # Marketing / campañas
+    "impressions": [
+        "impressions","impresiones","impr","views","ad_impressions",
+        "total_impressions","reach",
+    ],
+    "clicks": [
+        "clicks","clics","click_count","total_clicks","link_clicks","ad_clicks",
+    ],
+    "ctr": [
+        "ctr","click_through_rate","tasa_clics","click_rate","clickthrough",
+    ],
+    "ad_spend": [
+        "ad_spend","spend","cost","coste_publicidad","ad_cost","total_spend",
+        "campaign_cost","advertising_cost","media_spend","budget_spent",
+    ],
+    "roas": [
+        "roas","return_on_ad_spend","retorno_publicidad","ad_return",
+    ],
+    "conversions": [
+        "conversions","conversiones","converted","purchases","completed_orders",
+        "conversion_count","total_conversions",
+    ],
+    "cost_per_click": [
+        "cost_per_click","cpc","coste_por_clic","avg_cpc","bid",
+    ],
+    "cost_per_conversion": [
+        "cost_per_conversion","cpa","cost_per_acquisition","coste_conversion",
+    ],
+
+    # Sesiones web
+    "pageviews": [
+        "pageviews","page_views","pages_viewed","num_pages","vistas_pagina",
+    ],
+    "is_bounce": [
+        "is_bounce","bounce","bounced","bounced_session","rebote",
+    ],
+    "landing_page": [
+        "landing_page","first_page","entrada","landing","first_url",
+        "entry_page","first_page_seen",
+    ],
 
     "customer_external_id": [
         "customer_id","customerid","user_id","userid","client_id",
@@ -131,6 +200,11 @@ CANONICAL_ALIASES: dict[str, list[str]] = {
         "full_name","buyer_name","nombre_completo","user_name",
         "shopper_name","account_name","recipient_name","contact_name",
         "billed_to","ship_to_name",
+    ],
+    "phone_number": [
+        "phone","phone_number","telefono","tel","mobile","movil",
+        "contact_phone","billing_phone","customer_phone","cellphone",
+        "phone_no","numero_telefono","nº_telefono",
     ],
 
     "product_external_id": [
@@ -153,7 +227,12 @@ CANONICAL_ALIASES: dict[str, list[str]] = {
         "category","categoria","product_category","tipo",
         "product_type","item_category","department","product_group",
         "item_type","merchandise_type","product_family","segment",
-        "class","subcategory","line",
+        "class","line",
+    ],
+    "subcategory": [
+        "subcategory","subcategoria","sub_category","sub_categoria",
+        "product_subcategory","item_subcategory","sub_type",
+        "product_subtype","sub_group","product_subgroup",
     ],
     "brand": [
         "brand","marca","manufacturer","fabricante","brand_name",
@@ -183,7 +262,7 @@ CANONICAL_ALIASES: dict[str, list[str]] = {
     "customer_rating": [
         "customer_rating","rating","satisfaction","puntuacion",
         "review_score","score","stars","feedback_score",
-        "nps","review_rating","product_rating",
+        "nps","review_rating","product_rating","valoracion",
     ],
     "refund_amount": [
         "refund_amount","refund","reembolso","refund_total",
@@ -196,7 +275,6 @@ CANONICAL_ALIASES: dict[str, list[str]] = {
 }
 
 FUZZY_THRESHOLD = 75
-
 
 
 def _normalize(col: str) -> str:
@@ -220,7 +298,6 @@ def infer_mapping_with_confidence(
         }
     """
     result: dict[str, dict] = {}
-    already_assigned: dict[str, str] = {}  # canonical → col (para evitar duplicados)
 
     for col in columns:
         col_norm = _normalize(col)
@@ -306,6 +383,18 @@ def _infer_from_content(df: pd.DataFrame, col: str) -> str | None:
         if sum(1 for v in sample if email_re.match(v.strip())) / n > 0.6:
             return "customer_email"
 
+        # Teléfono
+        phone_re = re.compile(r'^[+\d\s\(\)\-\.]{7,20}$')
+        if sum(1 for v in sample if phone_re.match(v.strip())) / n > 0.6:
+            if any(kw in col_lower for kw in ["phone","tel","mobile","movil","celular"]):
+                return "phone_number"
+
+        # Código postal
+        postal_re = re.compile(r'^\d{4,6}$|^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$')
+        if sum(1 for v in sample if postal_re.match(v.strip())) / n > 0.7:
+            if any(kw in col_lower for kw in ["zip","postal","cp","postcode"]):
+                return "postal_code"
+
         # Fecha (múltiples formatos)
         date_patterns = [
             r'^\d{4}[-/]\d{2}[-/]\d{2}',
@@ -313,10 +402,12 @@ def _infer_from_content(df: pd.DataFrame, col: str) -> str | None:
             r'^\d{1,2} \w{3} \d{4}',
             r'^\w+ \d{1,2},? \d{4}',
             r'^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}',
-            r'^\d{2}\.\d{2}\.\d{4}',                    # DD.MM.YYYY (alemán)
+            r'^\d{2}\.\d{2}\.\d{4}',
         ]
         date_re = re.compile('|'.join(date_patterns))
         if sum(1 for v in sample if date_re.match(v.strip())) / n > 0.6:
+            if any(kw in col_lower for kw in ["ship","dispatch","sent","fulfil","envio"]):
+                return "shipping_date"
             return "order_date"
 
         # ID de transacción prefijado
@@ -341,6 +432,8 @@ def _infer_from_content(df: pd.DataFrame, col: str) -> str | None:
             if 0 <= avg <= 100 and max(nums) <= 100:
                 if any(kw in col_lower for kw in ["disc","pct","percent","promo","rebate","off"]):
                     return "discount_rate"
+                if any(kw in col_lower for kw in ["ctr","click_rate","clickthrough"]):
+                    return "ctr"
 
         # País
         countries = {
@@ -352,28 +445,37 @@ def _infer_from_content(df: pd.DataFrame, col: str) -> str | None:
         if sum(1 for v in sample if v.strip().lower() in countries) / n > 0.3:
             return "shipping_country"
 
-        # Estado de pago / canal
+        # Estado de pedido
         statuses = {"delivered","shipped","processing","cancelled","returned",
                     "pending","completed","failed","refunded","dispatched"}
         if sum(1 for v in sample if v.strip().lower() in statuses) / n > 0.4:
             if any(kw in col_lower for kw in ["status","state","estado"]):
                 return "status"
 
+        # Canal de tráfico
         channels = {"direct","organic","paid","email","social","referral",
                     "search","affiliate","display","seo","sem","cpc"}
         if sum(1 for v in sample if v.strip().lower() in channels) / n > 0.3:
+            if any(kw in col_lower for kw in ["source","fuente","canal","utm"]):
+                return "utm_source"
             return "channel"
+
+        # Dispositivo
+        devices = {"mobile","desktop","tablet","smartphone","app"}
+        if sum(1 for v in sample if v.strip().lower() in devices) / n > 0.5:
+            return "device_type"
 
         # Booleano de devolución
         yn_vals = {"yes","no","true","false","1","0","returned","devuelto","si","sí"}
         if sum(1 for v in sample if v.strip().lower() in yn_vals) / n > 0.8:
             if any(kw in col_lower for kw in ["return","devol","refund","reembolso"]):
                 return "is_returned"
+            if any(kw in col_lower for kw in ["bounce","rebote"]):
+                return "is_bounce"
 
         return None
     except Exception:
         return None
-
 
 
 def infer_mapping(

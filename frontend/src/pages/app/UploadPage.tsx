@@ -155,34 +155,56 @@ export function UploadPage() {
           </p>
 
           <div className="bg-muted rounded-lg p-4 mb-6 text-left">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-muted-foreground">Archivo</p>
-                <p className="font-medium text-foreground">{result.filename}</p>
+            {result.multi_sheet && result.sheets_summary ? (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-foreground mb-3">
+                  {result.sheets_created} hojas procesadas
+                </p>
+                {result.sheets_summary.map((sheet) => (
+                  <div key={sheet.filename} className="flex items-center justify-between text-sm py-2 border-b last:border-0">
+                    <div>
+                      <p className="font-medium text-foreground">{sheet.filename}</p>
+                      <p className="text-xs text-muted-foreground uppercase">{sheet.detected_type}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium text-foreground">{sheet.valid_rows.toLocaleString()} válidas</p>
+                      {sheet.invalid_rows > 0 && (
+                        <p className="text-xs text-warning">{sheet.invalid_rows} inválidas</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div>
-                <p className="text-muted-foreground">Tipo detectado</p>
-                <p className="font-medium text-foreground uppercase">{result.detected_type || 'unknown'}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Filas totales</p>
-                <p className="font-medium text-foreground">{result.total_rows.toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Filas válidas</p>
-                <p className="font-medium text-foreground">{result.valid_rows.toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Filas inválidas</p>
-                <p className="font-medium text-foreground">{result.invalid_rows.toLocaleString()}</p>
-              </div>
-              {result.main_reason && (
+            ) : (
+              <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-muted-foreground">Motivo principal</p>
-                  <p className="font-medium text-foreground">{result.main_reason}</p>
+                  <p className="text-muted-foreground">Archivo</p>
+                  <p className="font-medium text-foreground">{result.filename}</p>
                 </div>
-              )}
-            </div>
+                <div>
+                  <p className="text-muted-foreground">Tipo detectado</p>
+                  <p className="font-medium text-foreground uppercase">{result.detected_type || 'unknown'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Filas totales</p>
+                  <p className="font-medium text-foreground">{result.total_rows.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Filas válidas</p>
+                  <p className="font-medium text-foreground">{result.valid_rows.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Filas inválidas</p>
+                  <p className="font-medium text-foreground">{result.invalid_rows.toLocaleString()}</p>
+                </div>
+                {result.main_reason && (
+                  <div>
+                    <p className="text-muted-foreground">Motivo principal</p>
+                    <p className="font-medium text-foreground">{result.main_reason}</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {(result.main_reason || result.suggestions.length > 0) && (

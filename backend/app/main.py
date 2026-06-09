@@ -8,9 +8,7 @@ from app.db.database import engine, Base
 from app.models import *
 from app.api.errors import http_exception_handler
 from app.api.routes import auth, imports, kpis, dashboards, reports, team
-# from app.api.routes.team import router as team_router
 import os
-
 
 Base.metadata.create_all(bind=engine)
 

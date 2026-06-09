@@ -36,28 +36,51 @@ const CANONICAL_FIELD_MAP: Record<string, { label: string; description: string }
   payment_method:       { label: 'Método de pago',              description: 'Forma de pago: tarjeta, transferencia, PayPal…' },
   currency:             { label: 'Moneda',                      description: 'Código ISO de moneda (EUR, USD, GBP…)' },
   is_returned:          { label: 'Pedido devuelto',             description: 'Indica si el pedido fue devuelto (sí / no / true / false)' },
-  delivery_days:        { label: 'Días de entrega',             description: 'Número de días desde el pedido hasta la entrega al cliente' },
+  delivery_days:        { label: 'Días de entrega',             description: 'Número de días desde el pedido hasta la entrega' },
   shipping_country:     { label: 'País de envío',               description: 'País de destino del pedido' },
-  shipping_region:      { label: 'Región / Comunidad autónoma', description: 'Región, estado o comunidad autónoma de destino' },
+  shipping_region:      { label: 'Región / Provincia',          description: 'Región, estado o comunidad autónoma de destino' },
+  shipping_city:        { label: 'Ciudad de envío',             description: 'Ciudad de destino del pedido' },
+  postal_code:          { label: 'Código postal',               description: 'Código postal de la dirección de entrega' },
+  shipping_address:     { label: 'Dirección de envío',          description: 'Dirección completa de entrega' },
+  shipping_date:        { label: 'Fecha de envío',              description: 'Fecha en que se despachó el pedido' },
+  shipping_type:        { label: 'Tipo de envío',               description: 'Modalidad de envío: estándar, express, recogida…' },
   // Cliente
   customer_external_id: { label: 'ID del cliente',              description: 'Identificador único del cliente en tu sistema' },
   customer_email:       { label: 'Email del cliente',           description: 'Dirección de email del comprador' },
   customer_name:        { label: 'Nombre del cliente',          description: 'Nombre completo del comprador' },
+  phone_number:         { label: 'Teléfono del cliente',        description: 'Número de teléfono de contacto del cliente' },
+  customer_rating:      { label: 'Valoración del cliente',      description: 'Puntuación o valoración que el cliente dio al pedido' },
   // Producto / línea
   product_external_id:  { label: 'ID del producto',             description: 'Identificador único del producto en tu catálogo' },
   product_name:         { label: 'Nombre del producto',         description: 'Nombre o descripción del artículo vendido' },
   sku:                  { label: 'SKU / Referencia',            description: 'Código interno del producto (SKU, barcode, EAN…)' },
   category:             { label: 'Categoría',                   description: 'Categoría o familia a la que pertenece el producto' },
+  subcategory:          { label: 'Subcategoría',                description: 'Subcategoría más específica del producto' },
   brand:                { label: 'Marca',                       description: 'Marca o fabricante del producto' },
-  quantity:             { label: 'Cantidad vendida',            description: 'Número de unidades del producto en esta línea de pedido' },
+  quantity:             { label: 'Cantidad vendida',            description: 'Número de unidades del producto en esta línea' },
   unit_price:           { label: 'Precio unitario',             description: 'Precio de venta de una unidad del producto' },
   unit_cost:            { label: 'Coste unitario',              description: 'Coste de compra o fabricación de una unidad' },
   line_total:           { label: 'Total de la línea',           description: 'Importe total de esta línea (precio × cantidad)' },
-  // Marketing / sesión
+  // Marketing y sesión
   utm_source:           { label: 'Fuente de tráfico (UTM)',     description: 'Parámetro utm_source de la campaña de marketing' },
-  utm_campaign:         { label: 'Campaña (UTM)',               description: 'Nombre de la campaña de marketing que originó el pedido' },
+  utm_campaign:         { label: 'Campaña (UTM)',               description: 'Nombre de la campaña de marketing' },
+  utm_medium:           { label: 'Medio (UTM)',                 description: 'Parámetro utm_medium: email, cpc, social…' },
+  utm_content:          { label: 'Contenido (UTM)',             description: 'Parámetro utm_content para A/B de anuncios' },
+  utm_term:             { label: 'Término (UTM)',               description: 'Palabra clave de búsqueda de pago' },
   device_type:          { label: 'Tipo de dispositivo',         description: 'Dispositivo del comprador: móvil, escritorio, tablet' },
   session_id:           { label: 'ID de sesión web',            description: 'Identificador de la sesión de navegación del usuario' },
+  landing_page:         { label: 'Página de entrada',           description: 'Primera URL visitada en la sesión' },
+  is_bounce:            { label: 'Sesión rebotada',             description: 'Si el usuario abandonó sin interactuar (true/false)' },
+  pageviews:            { label: 'Páginas vistas',              description: 'Número de páginas vistas en la sesión' },
+  // Métricas de marketing
+  impressions:          { label: 'Impresiones',                 description: 'Veces que se mostró el anuncio' },
+  clicks:               { label: 'Clics',                       description: 'Número de clics en el anuncio' },
+  ctr:                  { label: 'CTR (%)',                     description: 'Tasa de clics sobre impresiones' },
+  ad_spend:             { label: 'Inversión publicitaria',      description: 'Dinero gastado en la campaña de publicidad' },
+  roas:                 { label: 'ROAS',                        description: 'Retorno sobre la inversión publicitaria' },
+  conversions:          { label: 'Conversiones',                description: 'Número de conversiones atribuidas a la campaña' },
+  cost_per_click:       { label: 'Coste por clic (CPC)',        description: 'Coste medio por cada clic en el anuncio' },
+  cost_per_conversion:  { label: 'Coste por conversión (CPA)',  description: 'Coste medio por cada conversión conseguida' },
 };
 
 // Grupos para <optgroup> — mejoran la navegabilidad del selector
@@ -68,23 +91,56 @@ const OPTION_GROUPS: { label: string; keys: string[] }[] = [
       'external_id', 'order_date', 'total_amount', 'net_amount', 'discount_amount',
       'shipping_cost', 'refund_amount', 'cogs_amount', 'status', 'channel',
       'payment_method', 'currency', 'is_returned', 'delivery_days',
-      'shipping_country', 'shipping_region',
+    ],
+  },
+  {
+    label: 'Envío y logística',
+    keys: [
+      'shipping_country', 'shipping_region', 'shipping_city', 'postal_code',
+      'shipping_address', 'shipping_date', 'shipping_type',
     ],
   },
   {
     label: 'Datos del cliente',
-    keys: ['customer_external_id', 'customer_email', 'customer_name'],
+    keys: [
+      'customer_external_id', 'customer_email', 'customer_name',
+      'phone_number', 'customer_rating',
+    ],
   },
   {
     label: 'Datos del producto / línea',
-    keys: ['product_external_id', 'product_name', 'sku', 'category', 'brand', 'quantity', 'unit_price', 'unit_cost', 'line_total'],
+    keys: [
+      'product_external_id', 'product_name', 'sku', 'category', 'subcategory',
+      'brand', 'quantity', 'unit_price', 'unit_cost', 'line_total',
+    ],
   },
   {
-    label: 'Marketing y sesión',
-    keys: ['utm_source', 'utm_campaign', 'device_type', 'session_id'],
+    label: 'Marketing y sesión web',
+    keys: [
+      'utm_source', 'utm_campaign', 'utm_medium', 'utm_content', 'utm_term',
+      'device_type', 'session_id', 'landing_page', 'is_bounce', 'pageviews',
+    ],
+  },
+  {
+    label: 'Métricas de campaña',
+    keys: [
+      'impressions', 'clicks', 'ctr', 'ad_spend', 'roas',
+      'conversions', 'cost_per_click', 'cost_per_conversion',
+    ],
   },
 ];
 
+const TYPE_LABELS: Record<string, string> = {
+  orders:       'Pedidos',
+  order_lines:  'Líneas de pedido',
+  customers:    'Clientes',
+  products:     'Catálogo de productos',
+  web_sessions: 'Sesiones web',
+  marketing:    'Campañas de marketing',
+  refunds:      'Devoluciones y reembolsos',
+  mixed:        'Dataset mixto',
+  unknown:      'Tipo no reconocido',
+};
 function fieldLabel(key: string): string {
   return CANONICAL_FIELD_MAP[key]?.label ?? key;
 }
@@ -93,11 +149,6 @@ function fieldDescription(key: string): string {
   return CANONICAL_FIELD_MAP[key]?.description ?? '';
 }
 
-function ConfidenceBadge({ value }: { value: number }) {
-  const pct = Math.round(value * 100);
-  const cls = pct >= 90 ? 'text-success' : pct >= 70 ? 'text-warning' : 'text-destructive';
-  return <span className={`text-xs font-semibold tabular-nums ${cls}`}>{pct}%</span>;
-}
 
 function StatusBadge({ status }: { status: string }) {
   if (status === 'completed')            return <span className="flex items-center gap-1 text-xs text-success font-medium"><CheckCircle2 className="h-3 w-3" /> Completado</span>;
@@ -178,6 +229,10 @@ function MappingDialog({
   const requiredMissing = suggestion?.required_fields_missing ?? [];
   const currentlyMapped = useMemo(() => new Set(Object.values(assignments).filter(Boolean)), [assignments]);
   const stillMissing    = requiredMissing.filter((f) => !currentlyMapped.has(f));
+  const [overrideType, setOverrideType] = useState<string>('orders');
+    useEffect(() => {
+      if (suggestion?.upload_type) setOverrideType(suggestion.upload_type);
+    }, [suggestion?.upload_type]);
 
   const handleSave = async () => {
     if (!imp || !suggestion) return;
@@ -186,10 +241,10 @@ function MappingDialog({
     try {
       await applyImportMapping(imp.id, {
         sheet_name:  suggestion.sheet_name,
-        upload_type: suggestion.upload_type,
+        upload_type: overrideType,
         assignments: Object.entries(assignments).map(([source_column, canonical_field]) => ({
           source_column,
-          canonical_field: canonical_field || null,
+          canonical_field: canonical_field || undefined,
         })),
       });
       onApplied();
@@ -200,11 +255,7 @@ function MappingDialog({
       setSaving(false);
     }
   };
-
-  const TYPE_LABELS: Record<string, string> = {
-    orders: 'Pedidos', order_lines: 'Líneas de pedido',
-    customers: 'Clientes', products: 'Productos', mixed: 'Mixto',
-  };
+  
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -225,14 +276,27 @@ function MappingDialog({
           <div className="space-y-4">
 
             {/* Resumen de detección */}
-            <div className="flex flex-wrap gap-4 rounded-lg border bg-muted/30 px-4 py-3 text-sm">
-              <div>
-                <span className="text-muted-foreground">Tipo detectado: </span>
-                <span className="font-semibold text-foreground">{TYPE_LABELS[suggestion.upload_type] ?? suggestion.upload_type}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Confianza de detección: </span>
-                <span className="font-semibold text-foreground">{Math.round(suggestion.confidence * 100)}%</span>
+            <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 px-4 py-3 text-sm">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tipo de dataset</span>
+                <div className="flex flex-wrap gap-2">
+                  {(Object.entries(TYPE_LABELS) as [string, string][])
+                    .filter(([k]) => k !== 'unknown')
+                    .map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setOverrideType(key)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                          overrideType === key
+                            ? 'bg-secondary text-secondary-foreground border-secondary'
+                            : 'bg-background text-muted-foreground border-border hover:border-secondary/50 hover:text-foreground'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                </div>
               </div>
               {!!suggestion.profiler_warnings.length && (
                 <div className="w-full text-xs text-warning space-y-0.5">
@@ -256,9 +320,6 @@ function MappingDialog({
                     </th>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       Campo del sistema
-                    </th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide w-20">
-                      Confianza
                     </th>
                   </tr>
                 </thead>
@@ -321,11 +382,6 @@ function MappingDialog({
                               </p>
                             )}
                           </div>
-                        </td>
-
-                        {/* Confianza */}
-                        <td className="px-4 py-3 align-top">
-                          <ConfidenceBadge value={item.confidence} />
                         </td>
                       </tr>
                     );
@@ -417,7 +473,6 @@ function ImportCard({ imp, onDelete, onRefresh }: { imp: BackendImport; onDelete
                 <StatusBadge status={imp.status} />
               </div>
               <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                <span className="capitalize bg-muted px-2 py-0.5 rounded font-medium">{imp.detected_type || 'desconocido'}</span>
                 <span><strong className="text-foreground">{imp.valid_rows.toLocaleString('es-ES')}</strong> filas válidas</span>
                 {(imp.invalid_rows > 0 || imp.status === 'needs_review') && <span className="text-warning">{imp.invalid_rows.toLocaleString('es-ES')} inválidas</span>}
                 {imp.data_date_from && imp.data_date_to && <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{imp.data_date_from} → {imp.data_date_to}</span>}
