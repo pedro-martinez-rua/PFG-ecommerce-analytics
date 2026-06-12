@@ -24,6 +24,9 @@ from app.models.order import Order
 from app.models.order_line import OrderLine
 from app.models.customer import Customer
 from app.models.product import Product
+from app.models.refund import Refund
+from app.models.web_session import WebSession
+from app.models.marketing_campaign import MarketingCampaign
 
 
 # SEGURIDAD
@@ -275,6 +278,21 @@ def reprocess_import_with_mapping(
             tenant_id=tenant_id,
         ).delete(synchronize_session=False)
 
+        db.query(Refund).filter_by(
+            import_id=import_id,
+            tenant_id=tenant_id,
+        ).delete(synchronize_session=False)
+
+        db.query(WebSession).filter_by(
+            import_id=import_id,
+            tenant_id=tenant_id,
+        ).delete(synchronize_session=False)
+
+        db.query(MarketingCampaign).filter_by(
+            import_id=import_id,
+            tenant_id=tenant_id,
+        ).delete(synchronize_session=False)
+
         db.commit()
 
     except Exception:
@@ -324,7 +342,7 @@ def _process_parsed_sheets(
     import_record.completed_at = datetime.now(timezone.utc)
 
     detected_types = list({r["detected_type"] for r in sheet_results})
-    import_record.detected_type = detected_types[0] if len(detected_types) == 1 else "mixed"
+    import_record.detected_type = forced_upload_type if (forced_upload_type and forced_upload_type != "unknown") else (detected_types[0] if len(detected_types) == 1 else "mixed")    
     import_record.detection_confidence = sheet_results[0]["detection_confidence"] if sheet_results else 0.0
     import_record.mapping_confirmed = bool(manual_mapping)
 
@@ -465,10 +483,15 @@ def _process_sheet(
         elif upload_type == UploadType.PRODUCTS:
             existing_ids = _get_existing_external_ids(db, tenant_id, Product)
             valid_loaded = _bulk_write_products(db, tenant_id, import_id, processable_df, existing_ids, BATCH_SIZE)
-        elif upload_type in (UploadType.WEB_SESSIONS, UploadType.MARKETING, UploadType.REFUNDS):
-            # Estos tipos no tienen tabla normalizada propia.
-            # Los datos quedan en raw_uploads y se marcan como válidos.
-            valid_loaded = len(processable_df)    
+        elif upload_type == UploadType.REFUNDS:
+            existing_ids = _get_existing_external_ids(db, tenant_id, Refund)
+            valid_loaded = _bulk_write_refunds(db, tenant_id, import_id, processable_df, existing_ids, BATCH_SIZE)
+        elif upload_type == UploadType.WEB_SESSIONS:
+            existing_ids = _get_existing_external_ids(db, tenant_id, WebSession)
+            valid_loaded = _bulk_write_web_sessions(db, tenant_id, import_id, processable_df, existing_ids, BATCH_SIZE)
+        elif upload_type == UploadType.MARKETING:
+            existing_ids = _get_existing_external_ids(db, tenant_id, MarketingCampaign)
+            valid_loaded = _bulk_write_marketing_campaigns(db, tenant_id, import_id, processable_df, existing_ids, BATCH_SIZE)
 
     import_sheet.valid_rows = valid_loaded
     import_sheet.invalid_rows = summary["invalid_rows"]
@@ -890,6 +913,191 @@ def _bulk_write_products(
     if batch:
         try:
             db.bulk_insert_mappings(Product, batch)
+            db.commit()
+            loaded += len(batch)
+        except Exception:
+            db.rollback()
+
+    return loaded
+
+
+def _bulk_write_refunds(
+    db, tenant_id, import_id,
+    processable_df,
+    existing_ids, batch_size
+) -> int:
+    batch  = []
+    loaded = 0
+
+    for _, row in processable_df.iterrows():
+        row_dict    = row.where(pd.notna(row), None).to_dict()
+        transformed = transform_row(row_dict)
+
+        ext_id = str(transformed.get("external_id")) if transformed.get("external_id") else None
+        if not ext_id:
+            ext_id = str(uuid.uuid4())
+        if ext_id in existing_ids:
+            continue
+        existing_ids.add(ext_id)
+
+        batch.append({
+            "id":                    str(uuid.uuid4()),
+            "tenant_id":             tenant_id,
+            "import_id":             import_id,
+            "external_id":           ext_id,
+            "order_external_id":     transformed.get("order_id") or transformed.get("external_id"),
+            "order_item_external_id":transformed.get("order_item_id") or transformed.get("order_item_external_id"),
+            "refund_amount":         transformed.get("refund_amount"),
+            "refund_amount_usd":     transformed.get("refund_amount_usd"),
+            "refund_date":           transformed.get("refund_date") or transformed.get("order_date"),
+            "return_date":           transformed.get("return_date"),
+            "refund_reason":         transformed.get("refund_reason") or transformed.get("return_reason"),
+            "return_reason":         transformed.get("return_reason"),
+            "extra_attributes":      {},
+        })
+
+        if len(batch) >= batch_size:
+            try:
+                db.bulk_insert_mappings(Refund, batch)
+                db.commit()
+                loaded += len(batch)
+                batch   = []
+            except Exception:
+                db.rollback()
+                batch = []
+
+    if batch:
+        try:
+            db.bulk_insert_mappings(Refund, batch)
+            db.commit()
+            loaded += len(batch)
+        except Exception:
+            db.rollback()
+
+    return loaded
+
+
+def _bulk_write_web_sessions(
+    db, tenant_id, import_id,
+    processable_df,
+    existing_ids, batch_size
+) -> int:
+    batch  = []
+    loaded = 0
+
+    for _, row in processable_df.iterrows():
+        row_dict    = row.where(pd.notna(row), None).to_dict()
+        transformed = transform_row(row_dict)
+
+        ext_id = (
+            str(transformed.get("session_id")) if transformed.get("session_id")
+            else str(transformed.get("external_id")) if transformed.get("external_id")
+            else str(uuid.uuid4())
+        )
+        if ext_id in existing_ids:
+            continue
+        existing_ids.add(ext_id)
+
+        batch.append({
+            "id":                str(uuid.uuid4()),
+            "tenant_id":         tenant_id,
+            "import_id":         import_id,
+            "external_id":       ext_id,
+            "session_date":      transformed.get("order_date") or transformed.get("session_date"),
+            "device_type":       transformed.get("device_type"),
+            "utm_source":        transformed.get("utm_source"),
+            "utm_campaign":      transformed.get("utm_campaign"),
+            "utm_medium":        transformed.get("utm_medium"),
+            "utm_content":       transformed.get("utm_content"),
+            "utm_term":          transformed.get("utm_term"),
+            "landing_page":      transformed.get("landing_page"),
+            "pageviews":         transformed.get("pageviews"),
+            "is_bounce":         _parse_bool(transformed.get("is_bounce")),
+            "new_visitor":       _parse_bool(transformed.get("new_visitor")),
+            "sessions_to_order": transformed.get("sessions_to_order"),
+            "time_on_site":      transformed.get("time_on_site"),
+            "extra_attributes":  {},
+        })
+
+        if len(batch) >= batch_size:
+            try:
+                db.bulk_insert_mappings(WebSession, batch)
+                db.commit()
+                loaded += len(batch)
+                batch   = []
+            except Exception:
+                db.rollback()
+                batch = []
+
+    if batch:
+        try:
+            db.bulk_insert_mappings(WebSession, batch)
+            db.commit()
+            loaded += len(batch)
+        except Exception:
+            db.rollback()
+
+    return loaded
+
+
+def _bulk_write_marketing_campaigns(
+    db, tenant_id, import_id,
+    processable_df,
+    existing_ids, batch_size
+) -> int:
+    batch  = []
+    loaded = 0
+
+    for _, row in processable_df.iterrows():
+        row_dict    = row.where(pd.notna(row), None).to_dict()
+        transformed = transform_row(row_dict)
+
+        ext_id = (
+            str(transformed.get("external_id")) if transformed.get("external_id")
+            else str(uuid.uuid4())
+        )
+        if ext_id in existing_ids:
+            continue
+        existing_ids.add(ext_id)
+
+        batch.append({
+            "id":                  str(uuid.uuid4()),
+            "tenant_id":           tenant_id,
+            "import_id":           import_id,
+            "external_id":         ext_id,
+            "campaign_name":       transformed.get("utm_campaign") or transformed.get("campaign_name"),
+            "campaign_id":         transformed.get("campaign_id"),
+            "campaign_date":       transformed.get("order_date") or transformed.get("campaign_date"),
+            "utm_source":          transformed.get("utm_source"),
+            "utm_medium":          transformed.get("utm_medium"),
+            "utm_content":         transformed.get("utm_content"),
+            "utm_term":            transformed.get("utm_term"),
+            "impressions":         transformed.get("impressions"),
+            "clicks":              transformed.get("clicks"),
+            "ctr":                 transformed.get("ctr"),
+            "reach":               transformed.get("reach"),
+            "ad_spend":            transformed.get("ad_spend"),
+            "cost_per_click":      transformed.get("cost_per_click"),
+            "cost_per_conversion": transformed.get("cost_per_conversion"),
+            "conversions":         transformed.get("conversions"),
+            "roas":                transformed.get("roas"),
+            "revenue":             transformed.get("total_amount") or transformed.get("revenue"),
+            "extra_attributes":    {},
+        })
+
+        if len(batch) >= batch_size:
+            try:
+                db.bulk_insert_mappings(MarketingCampaign, batch)
+                db.commit()
+                loaded += len(batch)
+                batch   = []
+            except Exception:
+                db.rollback()
+                batch = []
+
+    if batch:
+        try:
+            db.bulk_insert_mappings(MarketingCampaign, batch)
             db.commit()
             loaded += len(batch)
         except Exception:

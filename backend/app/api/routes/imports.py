@@ -479,7 +479,7 @@ def delete_import(import_id: str, db: Session = Depends(get_db), current_user: U
           )
     """), {"tid": tid, "iid": import_id})
 
-    for table in ["order_lines", "orders", "customers", "products", "field_mappings", "raw_uploads", "import_sheets"]:
+    for table in ["order_lines", "orders", "customers", "products", "refunds", "web_sessions", "marketing_campaigns", "field_mappings", "raw_uploads", "import_sheets"]:
         db.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid AND import_id = :iid"), {"tid": tid, "iid": import_id})
 
     invalidate_kpi_cache(db, tid)
@@ -496,17 +496,96 @@ def preview_import(import_id: str, mode: str = "raw", db: Session = Depends(get_
     if mode == "normalized":
         detected = (record.detected_type or "").lower()
         tenant_id = str(current_user.tenant_id)
+
         if detected in ("orders", "mixed"):
-            result = db.execute(text("""SELECT id::text AS id, external_id, order_date::text, total_amount, net_amount, discount_amount, status, channel, shipping_country, currency FROM orders WHERE tenant_id = :tenant_id AND import_id = :import_id ORDER BY order_date NULLS LAST LIMIT 10"""), {"tenant_id": tenant_id, "import_id": import_id})
+            result = db.execute(text("""
+                SELECT id::text AS id, external_id, order_date::text, total_amount,
+                       net_amount, discount_amount, status, channel, shipping_country, currency
+                FROM orders
+                WHERE tenant_id = :tenant_id AND import_id = :import_id
+                ORDER BY order_date NULLS LAST LIMIT 10
+            """), {"tenant_id": tenant_id, "import_id": import_id})
+
         elif detected == "order_lines":
-            result = db.execute(text("""SELECT id::text AS id, external_id, product_name, sku, category, quantity, unit_price, unit_cost, line_total FROM order_lines WHERE tenant_id = :tenant_id AND import_id = :import_id LIMIT 10"""), {"tenant_id": tenant_id, "import_id": import_id})
+            result = db.execute(text("""
+                SELECT id::text AS id, external_id, product_name, sku, category,
+                       subcategory, quantity, unit_price, unit_cost, line_total
+                FROM order_lines
+                WHERE tenant_id = :tenant_id AND import_id = :import_id
+                LIMIT 10
+            """), {"tenant_id": tenant_id, "import_id": import_id})
+
         elif detected == "products":
-            result = db.execute(text("""SELECT id::text AS id, external_id, name, sku, category, brand, unit_price, unit_cost FROM products WHERE tenant_id = :tenant_id AND import_id = :import_id LIMIT 10"""), {"tenant_id": tenant_id, "import_id": import_id})
+            result = db.execute(text("""
+                SELECT id::text AS id, external_id, name, sku, category,
+                       subcategory, brand, unit_price, unit_cost
+                FROM products
+                WHERE tenant_id = :tenant_id AND import_id = :import_id
+                LIMIT 10
+            """), {"tenant_id": tenant_id, "import_id": import_id})
+
+        elif detected == "customers":
+            result = db.execute(text("""
+                SELECT id::text AS id, external_id, email, full_name,
+                       country, city, phone_number, created_at::text
+                FROM customers
+                WHERE tenant_id = :tenant_id AND import_id = :import_id
+                LIMIT 10
+            """), {"tenant_id": tenant_id, "import_id": import_id})
+
+        elif detected == "refunds":
+            result = db.execute(text("""
+                SELECT id::text AS id, external_id, order_external_id,
+                       order_item_external_id, refund_amount, refund_amount_usd,
+                       refund_date::text, refund_reason, return_reason
+                FROM refunds
+                WHERE tenant_id = :tenant_id AND import_id = :import_id
+                LIMIT 10
+            """), {"tenant_id": tenant_id, "import_id": import_id})
+
+        elif detected == "web_sessions":
+            result = db.execute(text("""
+                SELECT id::text AS id, external_id, session_date::text,
+                       device_type, utm_source, utm_campaign, utm_medium,
+                       landing_page, pageviews, is_bounce, new_visitor
+                FROM web_sessions
+                WHERE tenant_id = :tenant_id AND import_id = :import_id
+                LIMIT 10
+            """), {"tenant_id": tenant_id, "import_id": import_id})
+
+        elif detected == "marketing":
+            result = db.execute(text("""
+                SELECT id::text AS id, external_id, campaign_name, campaign_date::text,
+                       utm_source, utm_medium, impressions, clicks, ctr,
+                       ad_spend, conversions, roas, revenue
+                FROM marketing_campaigns
+                WHERE tenant_id = :tenant_id AND import_id = :import_id
+                LIMIT 10
+            """), {"tenant_id": tenant_id, "import_id": import_id})
+
         else:
-            result = db.execute(text("""SELECT id::text AS id, external_id, email, full_name, country, created_at::text FROM customers WHERE tenant_id = :tenant_id AND import_id = :import_id LIMIT 10"""), {"tenant_id": tenant_id, "import_id": import_id})
+            result = db.execute(text("""
+                SELECT id::text AS id, external_id, email, full_name,
+                       country, created_at::text
+                FROM customers
+                WHERE tenant_id = :tenant_id AND import_id = :import_id
+                LIMIT 10
+            """), {"tenant_id": tenant_id, "import_id": import_id})
+
         rows = result.fetchall()
         keys = list(result.keys())
-        return {"import_id": import_id, "mode": "normalized", "detected_type": detected, "row_count": len(rows), "columns": keys, "rows": [{k: (None if isinstance(v, float) and (v != v or v == float('inf') or v == float('-inf')) else v) for k, v in dict(zip(keys, row)).items()} for row in rows]}
+        return {
+            "import_id":    import_id,
+            "mode":         "normalized",
+            "detected_type": detected,
+            "row_count":    len(rows),
+            "columns":      keys,
+            "rows": [
+                {k: (None if isinstance(v, float) and (v != v or v == float('inf') or v == float('-inf')) else v)
+                 for k, v in dict(zip(keys, row)).items()}
+                for row in rows
+            ],
+        }
     sheet = db.query(ImportSheet).filter_by(import_id=record.id, tenant_id=current_user.tenant_id).order_by(ImportSheet.created_at.asc()).first()
     if not sheet:
         return {"import_id": import_id, "mode": "raw", "detected_type": record.detected_type or "unknown", "row_count": 0, "columns": [], "rows": []}

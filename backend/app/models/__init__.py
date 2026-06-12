@@ -10,4 +10,7 @@ from app.models.customer import Customer
 from app.models.product import Product
 from app.models.kpi_snapshot import KpiSnapshot
 from app.models.dashboard import Dashboard   
-from app.models.report import Report         
+from app.models.report import Report
+from app.models.refund import Refund
+from app.models.web_session import WebSession
+from app.models.marketing_campaign import MarketingCampaign         

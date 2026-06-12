@@ -43,7 +43,7 @@ def get_upload_type_label(upload_type: str) -> str:
     return UPLOAD_TYPE_LABELS.get(upload_type, upload_type)
 
 
-# ── Señales por tipo ──────────────────────────────────────────────────────────
+# Señales por tipo
 
 ORDERS_SIGNALS = [
     "order_id", "order_number", "invoice_no", "invoiceno", "invoice_number",
@@ -97,10 +97,10 @@ REFUNDS_SIGNALS = [
     "refund_amount", "refund_usd", "reembolso",
     "return_reason", "refund_reason", "devolucion", "motivo_devolucion",
     "refunded_at", "returned_at", "credit_note",
+    "order_item_refund_id", "refund_amount_usd", "order_item_id",         
 ]
 
-# ── Señales para reglas estructurales ────────────────────────────────────────
-
+# Señales para reglas estructurales 
 ORDER_ID_SIGNALS = [
     "order_id", "order_number", "invoice_no", "invoiceno", "invoice_number",
     "transaction_id", "sale_id", "receipt_id",
@@ -129,10 +129,10 @@ MARKETING_EXCLUSIVE_SIGNALS = [
     "campaign_id", "campaign_name", "campaña",
 ]
 
-# Señales exclusivas de refunds
 REFUNDS_EXCLUSIVE_SIGNALS = [
     "refund_id", "return_id", "refund_reason", "return_reason",
     "refunded_at", "returned_at", "credit_note",
+    "order_item_refund_id", "refund_amount_usd", "refund_amount",         
 ]
 
 DETECTION_THRESHOLD   = 2
@@ -240,17 +240,13 @@ def _infer_marketing_from_content(df: pd.DataFrame) -> bool:
                 numeric_marketing += 1
     return numeric_marketing >= 2
 
-
 def detect_type_with_confidence(
     columns: list[str],
     df: pd.DataFrame | None = None,
 ) -> tuple[UploadType, float]:
     normalized_cols = [_normalize(c) for c in columns]
 
-    # ── Paso 1: señales exclusivas (mayor prioridad) ──────────────────────────
-    # Si hay señales que solo aparecen en un tipo concreto, lo forzamos
-    # antes de entrar en el sistema de votación general.
-
+    # Paso 1: señales exclusivas (mayor prioridad)
     if _has_exclusive(normalized_cols, WEB_EXCLUSIVE_SIGNALS):
         web_hits = _count_hits(normalized_cols, WEB_SESSIONS_SIGNALS)
         confidence = min(max(web_hits, 2) / max(len(columns), 1), 1.0)
@@ -266,7 +262,7 @@ def detect_type_with_confidence(
         confidence = min(max(ref_hits, 2) / max(len(columns), 1), 1.0)
         return UploadType.REFUNDS, round(max(confidence, 0.78), 2)
 
-    # ── Paso 2: conteo de hits por tipo ──────────────────────────────────────
+    # Paso 2: conteo de hits por tipo
     order_hits      = _count_hits(normalized_cols, ORDERS_SIGNALS)
     order_line_hits = _count_hits(normalized_cols, ORDER_LINES_SIGNALS)
     customer_hits   = _count_hits(normalized_cols, CUSTOMERS_SIGNALS)
@@ -282,11 +278,11 @@ def detect_type_with_confidence(
     has_quantity   = _has_signal(normalized_cols, QUANTITY_SIGNALS, 80)
     has_unit_price = _has_signal(normalized_cols, UNIT_PRICE_SIGNALS, 80)
 
-    # ── Paso 3: regla explícita para transaccionales tipo Online Retail ───────
+    # Paso 3: regla explícita para transaccionales tipo Online Retail
     if has_order_id and has_date and has_product and has_quantity and has_unit_price:
         return UploadType.ORDER_LINES, 0.88
 
-    # ── Paso 4: inferencia por contenido para tipos no-transaccionales ────────
+    # Paso 4: inferencia por contenido para tipos no-transaccionales
     if df is not None:
         if web_hits >= 1 and web_hits > order_hits and _infer_web_sessions_from_content(df):
             confidence = min(max(web_hits, 2) / max(len(columns), 1), 1.0)
@@ -296,7 +292,7 @@ def detect_type_with_confidence(
             confidence = min(max(marketing_hits, 2) / max(len(columns), 1), 1.0)
             return UploadType.MARKETING, round(max(confidence, 0.72), 2)
 
-    # ── Paso 5: votación general ──────────────────────────────────────────────
+    # Paso 5: votación general
     detected: list[tuple[UploadType, int]] = []
 
     if order_hits      >= DETECTION_THRESHOLD:
@@ -315,7 +311,6 @@ def detect_type_with_confidence(
         detected.append((UploadType.REFUNDS,      refund_hits))
 
     if len(detected) == 0:
-        # Último recurso: inferencia por contenido
         if df is not None and _infer_order_lines_from_content(df) and has_product:
             return UploadType.ORDER_LINES, 0.62
         return UploadType.UNKNOWN, 0.0
@@ -325,16 +320,14 @@ def detect_type_with_confidence(
         confidence = min(hits / max(len(columns), 1), 1.0)
         return upload_type, round(confidence, 2)
 
-    # ── Paso 6: resolución de conflictos ─────────────────────────────────────
-
+    # Paso 6: resolución de conflictos
     has_orders      = any(t == UploadType.ORDERS      for t, _ in detected)
     has_order_lines = any(t == UploadType.ORDER_LINES  for t, _ in detected)
     has_products    = any(t == UploadType.PRODUCTS     for t, _ in detected)
     has_web         = any(t == UploadType.WEB_SESSIONS for t, _ in detected)
     has_marketing   = any(t == UploadType.MARKETING    for t, _ in detected)
 
-    # Web sessions comparte utm_source/channel con orders — si hay fecha de pedido
-    # o importe, gana orders; si no, gana web_sessions.
+    # Web sessions comparte utm_source/channel con orders
     if has_web and (has_orders or has_order_lines):
         if has_order_id and (has_date or has_unit_price):
             detected = [(t, h) for t, h in detected if t != UploadType.WEB_SESSIONS]
@@ -342,13 +335,19 @@ def detect_type_with_confidence(
             confidence = min(max(web_hits, 2) / max(len(columns), 1), 1.0)
             return UploadType.WEB_SESSIONS, round(max(confidence, 0.72), 2)
 
-    # Marketing comparte campaign/channel con orders — si hay métricas de
-    # publicidad (impressions, spend) gana marketing.
+    # Marketing comparte campaign/channel con orders
     if has_marketing and (has_orders or has_order_lines):
         if marketing_hits > order_hits and marketing_hits > order_line_hits:
             confidence = min(marketing_hits / max(len(columns), 1), 1.0)
             return UploadType.MARKETING, round(max(confidence, 0.75), 2)
         detected = [(t, h) for t, h in detected if t != UploadType.MARKETING]
+
+    # Resolver conflicto ORDERS vs CUSTOMERS
+    # customer_id en una hoja de pedidos no la convierte en clientes
+    has_customers = any(t == UploadType.CUSTOMERS for t, _ in detected)
+    if has_customers and has_orders and not has_order_lines:
+        if has_order_id and has_date:
+            detected = [(t, h) for t, h in detected if t != UploadType.CUSTOMERS]
 
     # Resolver conflicto PRODUCTS vs ORDER_LINES
     if has_products and has_order_lines and not has_orders:
@@ -372,6 +371,9 @@ def detect_type_with_confidence(
         if has_excl or (has_order_id and has_product and has_quantity and has_unit_price):
             confidence = min(max(order_line_hits, 3) / max(len(columns), 1), 1.0)
             return UploadType.ORDER_LINES, round(max(confidence, 0.72), 2)
+        else:
+            # Sin señales exclusivas de líneas — gana orders
+            detected = [(t, h) for t, h in detected if t != UploadType.ORDER_LINES]
 
     # Si tras resolver conflictos queda un solo tipo
     if len(detected) == 1:
